@@ -6,7 +6,7 @@
     },
     "plugins": [
         {
-            "name": "code-reviewer",
+            "name": "gitlab-code-reviewer",
             "source": "./plugins/gitlab-code-review",
             "description": "AI-powered code review and suggestions",
             "version": "1.0.0",
