@@ -2,6 +2,10 @@
     "name": "glab-code-review",
     "description": "Automated code review for pull requests using multiple specialized agents with confidence-based scoring",
     "version": "1.0.0",
+    "metadata": {
+        "description": "GitLab merge request review tools and automation",
+        "version": "1.0.0"
+    },
     "author": {
         "name": "Algoritma Team",
         "email": "info@algoritma.it"
