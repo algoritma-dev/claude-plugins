@@ -19,8 +19,8 @@
         {
             "name": "superpowers",
             "source": {
-                "source": "github",
-                "repo": "obra/superpowers"
+                "source": "url",
+                "repo": "https://github.com/obra/superpowers.git"
             }
         }
     ]
