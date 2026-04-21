@@ -8,20 +8,31 @@
 
 ## Installation
 
-1. Add claude marketplace:
+### 1. Add the Algoritma marketplace
+
 ```bash
 claude plugin marketplace add https://github.com/algoritma-dev/claude-plugins
 ```
 
-2. Enable auto-update for marketplace
+### 2. Enable auto-update for the marketplace
 
 ```bash
 claude
 ```
 
-type /plugin and to marketplace tab then select the algoritma-marketplace and check "Enable auto-update"
+Inside Claude Code:
+1. Type `/plugin` → press Enter
+2. Navigate to the **Marketplace** tab
+3. Select **algoritma-marketplace**
+4. Check **Enable auto-update**
 
-3Use the `/plugin` command to install plugins from marketplaces, or configure them in your project's `.claude/settings.json`.
+### 3. Install plugins from the marketplace
+
+Inside Claude Code:
+1. Type `/plugin` → press Enter
+2. Navigate to the **Marketplace** tab
+3. Select **algoritma-marketplace**
+4. Browse available plugins and press **Install** on each one you want
 
 ## Plugin Structure
 
