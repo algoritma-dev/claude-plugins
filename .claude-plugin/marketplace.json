@@ -17,10 +17,10 @@
             }
         },
         {
-            "name": "obra/superpowers",
+            "name": "superpowers",
             "source": {
                 "source": "github",
-                "repo": "https://github.com/obra/superpowers"
+                "repo": "obra/superpowers"
             }
         }
     ]
