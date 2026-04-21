@@ -29,6 +29,13 @@
                 "source": "url",
                 "url": "https://github.com/JuliusBrussee/caveman.git"
             }
+        },
+        {
+            "name": "claude-mem",
+            "source": {
+                "source": "url",
+                "url": "https://github.com/thedotmack/claude-mem.git"
+            }
         }
     ]
 }
