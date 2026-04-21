@@ -1,19 +1,27 @@
 ## Plugins in This Directory
 
-| Name | Description | Contents                                                                                                                                                                           |
-|------|-------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| [gitlab-code-review](plugins/gitlab-code-review) | Automated code review for pull requests using multiple specialized agents with confidence-based scoring | **Command:** `/glab-code-review` |
+| Name                                                | Description                                                                                             | Contents                         |
+|-----------------------------------------------------|---------------------------------------------------------------------------------------------------------|----------------------------------|
+| [gitlab-code-review](plugins/gitlab-code-review)    | Automated code review for pull requests using multiple specialized agents with confidence-based scoring | **Command:** `/glab-code-review` |
+| [Caveman](https://github.com/JuliusBrussee/caveman) | Token usage compression                                                                                 | **Command:** `/caveman help`     |
+| [Superpowers](https://github.com/obra/superpowers)  | Claude code with superpowers                                                                            | **Command:** `/superpower help`  |
 
 ## Installation
 
-2. Navigate to your project and run Claude Code:
+1. Add claude marketplace:
+```bash
+claude plugin marketplace add https://github.com/algoritma-dev/claude-plugins
+```
+
+2. Enable auto-update for marketplace
+
 ```bash
 claude
 ```
 
-3. Use the `/plugin` command to install plugins from marketplaces, or configure them in your project's `.claude/settings.json`.
+type /plugin and to marketplace tab then select the algoritma-marketplace and check "Enable auto-update"
 
-For detailed plugin installation and configuration, see the [official documentation](https://docs.claude.com/en/docs/claude-code/plugins).
+3Use the `/plugin` command to install plugins from marketplaces, or configure them in your project's `.claude/settings.json`.
 
 ## Plugin Structure
 
