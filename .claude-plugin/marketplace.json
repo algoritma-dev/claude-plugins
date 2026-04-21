@@ -20,7 +20,7 @@
             "name": "superpowers",
             "source": {
                 "source": "url",
-                "repo": "https://github.com/obra/superpowers.git"
+                "url": "https://github.com/obra/superpowers.git"
             }
         }
     ]
