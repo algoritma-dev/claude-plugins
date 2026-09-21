@@ -255,4 +255,35 @@ Boris Cherny (boris@anthropic.com)
 
 ## Version
 
-1.0.0
+1.1.0
+
+## Running in CI
+
+The command runs headless under a CI job:
+
+```bash
+claude -p "/glab-code-review $CI_MERGE_REQUEST_IID" --permission-mode bypassPermissions
+```
+
+Requirements in the job environment:
+
+| Variable | Purpose |
+|---|---|
+| `CLAUDE_CODE_OAUTH_TOKEN` | Claude subscription token from `claude setup-token`. |
+| `GITLAB_TOKEN` | GitLab token with the `api` scope. `read_api` returns 403 on every write. |
+| `CI_PROJECT_ID`, `CI_MERGE_REQUEST_IID`, `CI_MERGE_REQUEST_DIFF_BASE_SHA`, `CI_COMMIT_SHA` | Supplied by GitLab. |
+
+`ANTHROPIC_API_KEY` must not be set: it switches Claude Code to metered API billing.
+
+The repository must be checked out with full history (`GIT_DEPTH: 0`); the review diffs against the
+merge base and against the previously reviewed commit.
+
+Reviews are incremental. The command records the reviewed head SHA in its summary note as
+`<!-- claude-review: <sha> -->` and the next run reviews only the commits after it, falling back to
+a full review when that SHA is no longer an ancestor of the branch head.
+
+## Tests
+
+```bash
+sh plugins/gitlab-code-review/tests/run-tests.sh
+```

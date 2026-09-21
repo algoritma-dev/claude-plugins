@@ -1,0 +1,29 @@
+#!/bin/sh
+# Test double for the glab CLI.
+#
+# Appends its full argument list to $STUB_GLAB_CALLS (one line per call) and
+# writes the contents of $STUB_GLAB_REPLY to stdout.
+#
+# $STUB_GLAB_FAIL_MATCH makes the stub fail selectively: a call whose argument
+# list contains that substring exits 22 and prints to stderr. Selecting by
+# argument rather than by call count is what lets a test fail one endpoint
+# while the others keep answering, since every call is a separate process and
+# no state survives between them.
+set -e
+
+if [ -n "$STUB_GLAB_CALLS" ]; then
+    echo "$*" >> "$STUB_GLAB_CALLS"
+fi
+
+if [ -n "${STUB_GLAB_FAIL_MATCH:-}" ]; then
+    case "$*" in
+        *"$STUB_GLAB_FAIL_MATCH"*)
+            echo "stub-glab: simulated failure for '$STUB_GLAB_FAIL_MATCH'" >&2
+            exit 22
+            ;;
+    esac
+fi
+
+if [ -n "${STUB_GLAB_REPLY:-}" ] && [ -r "$STUB_GLAB_REPLY" ]; then
+    cat "$STUB_GLAB_REPLY"
+fi
