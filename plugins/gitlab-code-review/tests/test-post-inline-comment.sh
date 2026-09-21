@@ -16,14 +16,17 @@ setup() {
     export PATH
 
     STUB_GLAB_CALLS="$WORK/calls.log"
+    STUB_GLAB_STDIN="$WORK/body.json"
     STUB_GLAB_REPLY="$WORK/reply.json"
     STUB_GLAB_FAIL_MATCH=""
-    export STUB_GLAB_CALLS STUB_GLAB_REPLY STUB_GLAB_FAIL_MATCH
+    export STUB_GLAB_CALLS STUB_GLAB_STDIN STUB_GLAB_REPLY STUB_GLAB_FAIL_MATCH
     : > "$STUB_GLAB_CALLS"
-    printf '{"base_sha":"aaa","start_sha":"bbb","head_sha":"ccc"}\n' > "$STUB_GLAB_REPLY"
+    : > "$STUB_GLAB_STDIN"
+    printf '{"diff_refs":{"base_sha":"aaa","start_sha":"bbb","head_sha":"ccc"}}\n' > "$STUB_GLAB_REPLY"
 
-    BODY_FILE="$WORK/body.md"
-    printf 'Missing null check.\n' > "$BODY_FILE"
+    BODY_FILE="$WORK/comment.md"
+    BODY_TEXT='Missing null check — see "Foo::bar", line 3.'
+    printf '%s\n' "$BODY_TEXT" > "$BODY_FILE"
 
     CI_PROJECT_ID=42
     export CI_PROJECT_ID
@@ -52,25 +55,39 @@ check_equals() {
     fi
 }
 
-# A successful inline discussion carries every position field GitLab requires.
+# The request body must be JSON with a nested position object. Bracketed field
+# names are not expanded into a nested hash in a JSON body, so a flat
+# "position[new_line]" key would reach GitLab as an ordinary unpositioned
+# comment and the placement would be lost without any error.
 setup
 sh "$SCRIPT" 7 src/Core/Foo.php 12 "$BODY_FILE"
 calls=$(cat "$STUB_GLAB_CALLS")
-check_contains "reads the diff refs" "projects/42/merge_requests/7" "$calls"
+sent=$(cat "$STUB_GLAB_STDIN")
+check_contains "reads the merge request" "projects/42/merge_requests/7" "$calls"
 check_contains "posts to the discussions endpoint" "projects/42/merge_requests/7/discussions" "$calls"
-check_contains "sends position_type" "position[position_type]=text" "$calls"
-check_contains "sends base_sha from diff_refs" "position[base_sha]=aaa" "$calls"
-check_contains "sends start_sha from diff_refs" "position[start_sha]=bbb" "$calls"
-check_contains "sends head_sha from diff_refs" "position[head_sha]=ccc" "$calls"
-check_contains "sends new_path" "position[new_path]=src/Core/Foo.php" "$calls"
-check_contains "sends new_line" "position[new_line]=12" "$calls"
+check_contains "sends the body as a JSON document" "Content-Type: application/json" "$calls"
+if printf '%s' "$calls" | grep -q -- "--jq"; then
+    echo "FAIL - glab api has no --jq flag, but the script passes one"
+    failures=$((failures + 1))
+else
+    echo "ok   - no --jq flag is passed to glab"
+fi
+check_equals "the body is valid JSON" "0" "$(printf '%s' "$sent" | jq -e . >/dev/null 2>&1; echo $?)"
+check_equals "position is a nested object" "object" "$(printf '%s' "$sent" | jq -r '.position | type')"
+check_equals "position_type is text" "text" "$(printf '%s' "$sent" | jq -r '.position.position_type')"
+check_equals "base_sha comes from diff_refs" "aaa" "$(printf '%s' "$sent" | jq -r '.position.base_sha')"
+check_equals "start_sha comes from diff_refs" "bbb" "$(printf '%s' "$sent" | jq -r '.position.start_sha')"
+check_equals "head_sha comes from diff_refs" "ccc" "$(printf '%s' "$sent" | jq -r '.position.head_sha')"
+check_equals "new_path is carried" "src/Core/Foo.php" "$(printf '%s' "$sent" | jq -r '.position.new_path')"
+check_equals "new_line is carried" "12" "$(printf '%s' "$sent" | jq -r '.position.new_line')"
+check_equals "the comment text survives quoting" "$BODY_TEXT" "$(printf '%s' "$sent" | jq -r '.body')"
 
 # Review Focus 4 - an unresolvable position must not lose the finding.
 setup
 STUB_GLAB_FAIL_MATCH="discussions"
 export STUB_GLAB_FAIL_MATCH
 set +e
-sh "$SCRIPT" 7 src/Deleted.php 3 "$BODY_FILE"
+sh "$SCRIPT" 7 src/Deleted.php 3 "$BODY_FILE" 2>/dev/null
 status=$?
 set -e
 check_equals "a rejected position still exits 0" "0" "$status"
@@ -88,10 +105,20 @@ cat "$STUB_GLAB_REPLY"
 STUB
 chmod +x "$STUB_DIR/glab"
 set +e
-sh "$SCRIPT" 7 src/Core/Foo.php 12 "$BODY_FILE"
+sh "$SCRIPT" 7 src/Core/Foo.php 12 "$BODY_FILE" 2>/dev/null
 status=$?
 set -e
 check_equals "a read-only token makes the script fail" "1" "$status"
+
+# A merge request whose diff refs cannot be read is a hard failure: posting an
+# unpositioned comment instead would hide the problem.
+setup
+printf '{"diff_refs":null}\n' > "$STUB_GLAB_REPLY"
+set +e
+sh "$SCRIPT" 7 src/Core/Foo.php 12 "$BODY_FILE" 2>/dev/null
+status=$?
+set -e
+check_equals "missing diff refs exit 1" "1" "$status"
 
 if [ "$failures" -gt 0 ]; then
     echo "$failures test(s) failed"

@@ -1,19 +1,43 @@
 #!/bin/sh
 # Test double for the glab CLI.
 #
-# Appends its full argument list to $STUB_GLAB_CALLS (one line per call) and
-# writes the contents of $STUB_GLAB_REPLY to stdout.
+# Records every call and answers from fixture files:
+#   $STUB_GLAB_CALLS       one line per call, the full argument list
+#   $STUB_GLAB_STDIN       the request body, when the call reads one (--input -)
+#   $STUB_GLAB_REPLY       stdout for a generic call
+#   $STUB_GLAB_REPLY_USER  stdout for `api user`, when set
+#   $STUB_GLAB_FAIL_MATCH  a call whose arguments contain this substring exits 22
 #
-# $STUB_GLAB_FAIL_MATCH makes the stub fail selectively: a call whose argument
-# list contains that substring exits 22 and prints to stderr. Selecting by
-# argument rather than by call count is what lets a test fail one endpoint
-# while the others keep answering, since every call is a separate process and
-# no state survives between them.
+# The stub rejects flags the real glab does not have. glab api offers
+# --field/--header/--hostname/--include/--input/--method/--output/--paginate/
+# --raw-field/--silent and nothing else; accepting anything else here would let
+# a script that calls a nonexistent flag pass its tests and fail in CI.
 set -e
 
-if [ -n "$STUB_GLAB_CALLS" ]; then
+if [ -n "${STUB_GLAB_CALLS:-}" ]; then
     echo "$*" >> "$STUB_GLAB_CALLS"
 fi
+
+for arg in "$@"; do
+    case "$arg" in
+        --field|--header|--hostname|--include|--input|--method|--output|--paginate|--raw-field|--silent|--form|--message)
+            ;;
+        --*)
+            echo "stub-glab: Unknown flag: $arg." >&2
+            exit 1
+            ;;
+    esac
+done
+
+case "$*" in
+    *--input\ -*)
+        if [ -n "${STUB_GLAB_STDIN:-}" ]; then
+            cat > "$STUB_GLAB_STDIN"
+        else
+            cat > /dev/null
+        fi
+        ;;
+esac
 
 if [ -n "${STUB_GLAB_FAIL_MATCH:-}" ]; then
     case "$*" in
@@ -23,6 +47,15 @@ if [ -n "${STUB_GLAB_FAIL_MATCH:-}" ]; then
             ;;
     esac
 fi
+
+case "$*" in
+    *"api user"*)
+        if [ -n "${STUB_GLAB_REPLY_USER:-}" ] && [ -r "$STUB_GLAB_REPLY_USER" ]; then
+            cat "$STUB_GLAB_REPLY_USER"
+            exit 0
+        fi
+        ;;
+esac
 
 if [ -n "${STUB_GLAB_REPLY:-}" ] && [ -r "$STUB_GLAB_REPLY" ]; then
     cat "$STUB_GLAB_REPLY"

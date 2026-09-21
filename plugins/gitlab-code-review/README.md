@@ -13,39 +13,30 @@ The Code Review Plugin automates pull request review by launching multiple agent
 Performs automated code review on a pull request using multiple specialized agents.
 
 **What it does:**
-1. Checks if review is needed (skips closed, draft, trivial, or already-reviewed PRs)
-2. Gathers relevant CLAUDE.md guideline files from the repository
-3. Summarizes the pull request changes
-4. Launches 4 parallel agents to independently review:
-    - **Agents #1 & #2**: Audit for CLAUDE.md compliance
-    - **Agent #3**: Scan for obvious bugs in changes
-    - **Agent #4**: Analyze git blame/history for context-based issues
-5. Scores each issue 0-100 for confidence level
-6. Filters out issues below 80 confidence threshold
-7. Outputs review (to terminal by default, or as PR comment with `--comment` flag)
+1. Resolves the range to review: the whole merge request the first time, and only the
+   commits added since its own previous review afterwards
+2. Checks whether a review is needed (skips closed, draft and trivial merge requests)
+3. Gathers relevant CLAUDE.md guideline files from the repository
+4. Summarizes the changes in that range
+5. Launches 4 parallel agents to independently review: two for CLAUDE.md compliance and
+   two for bugs and logic errors
+6. Validates every candidate finding with a second agent, and drops the ones that do not
+   survive validation
+7. Posts each surviving finding as an inline discussion on the changed line, then one
+   summary note recording the reviewed head SHA
 
 **Usage:**
 ```bash
-/glab-code-review [--comment]
+/glab-code-review <merge-request-iid>
 ```
 
-**Options:**
-- `--comment`: Post the review as a comment on the pull request (default: outputs to terminal only)
+**This command writes to the merge request.** It posts inline comments and a summary note
+every time it runs; there is no terminal-only mode. The summary note is what makes the next
+review incremental, so it is posted even when no issues were found.
 
-**Example workflow:**
-```bash
-# On a PR branch, run locally (outputs to terminal):
-/glab-code-review
-
-# Post review as PR comment:
-/glab-code-review --comment
-
-# Claude will:
-# - Launch 4 review agents in parallel
-# - Score each issue for confidence
-# - Output issues ≥80 confidence (to terminal or PR depending on flag)
-# - Skip if no high-confidence issues found
-```
+It currently requires the GitLab CI environment variables listed under
+[Running in CI](#running-in-ci); outside a CI job it stops with a message naming the missing
+variable.
 
 **Features:**
 - Multiple independent agents for comprehensive review
@@ -117,33 +108,26 @@ This plugin is included in the Claude Code repository. The command is automatica
 
 ## Workflow Integration
 
-### Standard PR review workflow:
+### Standard merge request review workflow:
 ```bash
-# Create PR with changes
-# Run local review (outputs to terminal)
-/glab-code-review
+# Open the merge request, then from a CI job on it:
+/glab-code-review 123
 
-# Review the automated feedback
-# Make any necessary fixes
-
-# Optionally post as PR comment
-/glab-code-review --comment
-
-# Merge when ready
+# Findings land as inline comments on the changed lines, plus one summary note.
+# Push fixes; the next run reviews only the new commits.
 ```
 
 ### As part of CI/CD:
-```bash
-# Trigger on PR creation or update
-# Use --comment flag to post review comments
-/glab-code-review --comment
-# Skip if review already exists
-```
+
+See [Running in CI](#running-in-ci). The job triggers on `merge_request_event`, and the
+command skips itself when the merge request is closed, draft, or has no new commits since
+its last review.
 
 ## Requirements
 
-- Git repository with GitHub integration
-- GitHub CLI (`gh`) installed and authenticated
+- A GitLab project, and a token with the `api` scope
+- GitLab CLI (`glab`) installed and authenticated
+- `jq` and `git` on PATH
 - CLAUDE.md files (optional but recommended for guideline checking)
 
 ## Troubleshooting

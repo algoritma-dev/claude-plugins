@@ -3,36 +3,52 @@
 #
 # Prints "<from>..<to>" on stdout. Exit 3 means there is nothing new since the
 # last review and the caller must post nothing. Exit 1 means the range could
-# not be resolved.
+# not be resolved, and the caller must stop rather than guess.
 #
 # The previous review's head SHA is read from a marker the reviewer writes into
-# its own summary note: <!-- claude-review: <sha> -->. A marker is authoritative
-# only while it is still an ancestor of the current head; after a force-push it
-# is not, and the run falls back to a full review from the merge base.
+# its own summary note: <!-- claude-review: <sha> -->. Only notes written by the
+# authenticated account count, so a marker quoted or pasted by somebody else
+# cannot steer or silence the reviewer. A marker is authoritative only while it
+# is still an ancestor of the current head; after a force-push it is not, and
+# the run falls back to a full review from the merge base.
 set -eu
 
-iid="${1:-}"
-if [ -z "$iid" ]; then
-    echo "usage: review-range.sh <mr_iid>" >&2
+fail() {
+    echo "review-range: $1" >&2
     exit 1
-fi
+}
 
-: "${CI_PROJECT_ID:?CI_PROJECT_ID is required}"
-: "${CI_MERGE_REQUEST_DIFF_BASE_SHA:?CI_MERGE_REQUEST_DIFF_BASE_SHA is required}"
-: "${CI_COMMIT_SHA:?CI_COMMIT_SHA is required}"
+iid="${1:-}"
+[ -n "$iid" ] || fail "usage: review-range.sh <mr_iid>"
+
+# These come from GitLab CI. Checked explicitly rather than with ${VAR:?},
+# which exits 2 in dash and would contradict this script's documented codes.
+[ -n "${CI_PROJECT_ID:-}" ] || fail "CI_PROJECT_ID is not set; this command currently runs only inside GitLab CI"
+[ -n "${CI_MERGE_REQUEST_DIFF_BASE_SHA:-}" ] || fail "CI_MERGE_REQUEST_DIFF_BASE_SHA is not set; this command currently runs only inside GitLab CI"
+[ -n "${CI_COMMIT_SHA:-}" ] || fail "CI_COMMIT_SHA is not set; this command currently runs only inside GitLab CI"
 
 base="$CI_MERGE_REQUEST_DIFF_BASE_SHA"
 head="$CI_COMMIT_SHA"
 
-notes=$(glab api "projects/$CI_PROJECT_ID/merge_requests/$iid/notes?per_page=100&sort=asc" \
-    --jq '[.[].body]' 2>/dev/null || echo '[]')
+# glab api has no --jq flag; the filtering is jq's job.
+bot=$(glab api "user" | jq -r '.username') \
+    || fail "cannot read the authenticated account; check GITLAB_TOKEN"
+[ -n "$bot" ] && [ "$bot" != "null" ] \
+    || fail "the authenticated account has no username"
 
-# The trailing "-->" is part of the pattern so prose mentioning the key alone
-# is never mistaken for a marker.
+# Newest first, so the first marker found is the current one. Reading only the
+# first page is then safe: on a busy merge request the newest notes are the
+# ones that fit.
+notes=$(glab api "projects/$CI_PROJECT_ID/merge_requests/$iid/notes?per_page=100&sort=desc") \
+    || fail "cannot read the notes of merge request $iid"
+
+# A failed read is never treated as "no marker": that would silently re-review
+# the whole merge request and repost every finding already on it.
 marker=$(printf '%s' "$notes" \
+    | jq -r --arg bot "$bot" '.[] | select(.author.username == $bot) | .body' \
     | grep -o 'claude-review: [0-9a-f]\{40\} -->' \
-    | tail -n 1 \
-    | cut -d' ' -f2 || true)
+    | head -n 1 \
+    | cut -d' ' -f2) || true
 
 if [ -z "$marker" ]; then
     echo "$base..$head"
