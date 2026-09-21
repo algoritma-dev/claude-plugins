@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(glab mr view:*), Bash(glab issue list:*), Bash(glab mr note:*), Bash(glab mr diff:*), Bash(glab mr list:*), mcp__gitlab_inline_comment__create_inline_comment
+allowed-tools: Bash(glab mr view:*), Bash(glab mr diff:*), Bash(glab mr list:*), Bash(glab mr note:*), Bash(glab issue list:*), Bash(glab api:*), Bash(git diff:*), Bash(git log:*), Bash(git show:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/review-range.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/post-inline-comment.sh:*)
 description: Code review a merge request
 ---
 
@@ -11,13 +11,28 @@ Provide a code review for the given merge request.
 
 To do this, follow these steps precisely:
 
-1. Launch a haiku agent to check if any of the following are true:
+1. Establish what to review.
+
+   Run the range resolver:
+
+   ```bash
+   ${CLAUDE_PLUGIN_ROOT}/scripts/review-range.sh <MR>
+   ```
+
+   - Exit code 3: there are no new commits since the last review. Stop. Post nothing.
+   - Exit code 0: the printed `<from>..<to>` range is what you review. Everything outside it has
+     already been reviewed and must not be commented on again.
+   - Any other exit code: stop and report the failure.
+
+   Then launch a haiku agent to check whether any of the following is true:
     - The merge request is closed
     - The merge request is a draft
-    - The merge request does not need code review (e.g. automated MR, trivial change that is obviously correct)
-    - Claude has already commented on this MR (check `glab mr view <MR> --comments` for comments left by Claude)
+    - The merge request does not need code review (e.g. automated MR, trivial change that is
+      obviously correct)
 
-   If any condition is true, stop and do not proceed.
+   If any condition is true, stop and do not proceed. Do not stop merely because Claude has
+   commented before — that is the normal incremental case, and the range already excludes what
+   those comments covered.
 
 Note: Still review Claude generated MRs.
 
@@ -25,9 +40,15 @@ Note: Still review Claude generated MRs.
     - The root CLAUDE.md file, if it exists
     - Any CLAUDE.md files in directories containing files modified by the merge request
 
-3. Launch a sonnet agent to view the merge request and return a summary of the changes
+3. Launch a sonnet agent to view the merge request and return a summary of the changes.
 
-4. Launch 4 agents in parallel to independently review the changes. Each agent should return the list of issues, where each issue includes a description and the reason it was flagged (e.g. "CLAUDE.md adherence", "bug"). The agents should do the following:
+   Read the diff with `git diff <from>..<to>` using the range from step 1, not `glab mr diff`,
+   which always returns the whole merge request. Read surrounding files freely: the repository is
+   checked out and the point of reviewing here rather than from the diff alone is that the code
+   around the change is available.
+
+4. Launch 4 agents in parallel to independently review the changes. Every agent reads the diff
+   with `git diff <from>..<to>` using the range from step 1, never `glab mr diff`. Each agent should return the list of issues, where each issue includes a description and the reason it was flagged (e.g. "CLAUDE.md adherence", "bug"). The agents should do the following:
 
    Agents 1 + 2: CLAUDE.md compliance sonnet agents
    Audit changes for CLAUDE.md compliance in parallel. Note: When evaluating CLAUDE.md compliance for a file, you should only consider CLAUDE.md files that share a file path with the file or parents.
@@ -56,20 +77,45 @@ Note: Still review Claude generated MRs.
 
 6. Filter out any issues that were not validated in step 5. This step will give us our list of high signal issues for our review.
 
-7. If issues were found, skip to step 8 to post inline comments directly.
-
-   If NO issues were found, post a summary comment using `glab mr note` (if `--comment` argument is provided):
-   "No issues found. Checked for bugs and CLAUDE.md compliance."
+7. If issues were found, go on to step 8 to post inline comments. If NO issues were found, skip
+   to step 10: the summary note is posted either way.
 
 8. Create a list of all comments that you plan on leaving. This is only for you to make sure you are comfortable with the comments. Do not post this list anywhere.
 
-9. Post inline comments for each issue using `mcp__gitlab_inline_comment__create_inline_comment`. For each comment:
+9. Post one inline comment per validated issue. Write the comment body to a temporary file and
+   post it:
+
+   ```bash
+   ${CLAUDE_PLUGIN_ROOT}/scripts/post-inline-comment.sh <MR> <path> <line> <body-file>
+   ```
+
+   The script resolves the diff refs itself; do not assemble the position by hand. A position
+   GitLab cannot resolve falls back to a plain note automatically, and a non-zero exit means the
+   finding reached the merge request by neither route — report that rather than continuing
+   silently.
+
+   For each comment:
     - Provide a brief description of the issue
     - For small, self-contained fixes, include a committable suggestion block
     - For larger fixes (6+ lines, structural changes, or changes spanning multiple locations), describe the issue and suggested fix without a suggestion block
     - Never post a committable suggestion UNLESS committing the suggestion fixes the issue entirely. If follow up steps are required, do not leave a committable suggestion.
 
    **IMPORTANT: Only post ONE comment per unique issue. Do not post duplicate comments.**
+
+10. Post exactly one summary note recording the reviewed head SHA. The next run reads that SHA to
+    work out what is new, so this note is mandatory on every successful review, whether or not
+    issues were found:
+
+    ```bash
+    glab mr note <MR> --message "## Code review
+
+    <one line: 'No issues found. Checked for bugs and CLAUDE.md compliance.' or 'N issue(s) commented inline.'>
+
+    <!-- claude-review: <to-sha-from-step-1> -->"
+    ```
+
+    The `<to-sha>` is the right-hand side of the range from step 1 — the full 40-character SHA,
+    never an abbreviation. The marker must be the last line of the note.
 
 Use this list when evaluating issues in Steps 4 and 5 (these are false positives, do NOT flag):
 
@@ -85,16 +131,6 @@ Notes:
 - Use glab CLI to interact with GitLab (e.g., `glab mr view`). Do not use web fetch.
 - Create a todo list before starting.
 - You must cite and link each issue in inline comments (e.g., if referring to a CLAUDE.md, include a link to it).
-- If no issues are found, post a comment with the following format:
-
----
-
-## Code review
-
-No issues found. Checked for bugs and CLAUDE.md compliance.
-
----
-
 - When linking to code in inline comments, follow the following format precisely, otherwise the Markdown preview won't render correctly: https://gitlab.com/group/project/-/blob/c21d3c10bc8e898b7ac1a2d745bdc9bc4e423afe/package.json#L10-15
     - Requires full git sha
     - You must provide the full sha. Commands like `https://gitlab.com/owner/repo/-/blob/$(git rev-parse HEAD)/foo/bar` will not work, since your comment will be directly rendered in Markdown.
