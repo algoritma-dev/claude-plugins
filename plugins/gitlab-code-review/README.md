@@ -239,7 +239,7 @@ Boris Cherny (boris@anthropic.com)
 
 ## Version
 
-1.1.0
+1.2.0
 
 ## Running in CI
 

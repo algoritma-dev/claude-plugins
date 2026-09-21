@@ -9,7 +9,7 @@
             "name": "gitlab-code-reviewer",
             "source": "./plugins/gitlab-code-review",
             "description": "AI-powered code review and suggestions",
-            "version": "1.1.0",
+            "version": "1.2.0",
             "category": "development",
             "homepage": "https://github.com/algoritma-dev/claude-plugins/tree/main/plugins/gitlab-code-review",
             "author": {
