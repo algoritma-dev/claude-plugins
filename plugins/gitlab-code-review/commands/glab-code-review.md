@@ -47,6 +47,11 @@ Note: Still review Claude generated MRs.
    checked out and the point of reviewing here rather than from the diff alone is that the code
    around the change is available.
 
+   `vendor/` is installed. Open it to understand what the changed code calls — a framework base
+   class, an interface the change implements, the signature of a method it passes arguments to.
+   Never review it: nothing under `vendor/` is this team's code, and a finding there is always a
+   false positive. The same goes for `node_modules/` when present.
+
 4. Launch 4 agents in parallel to independently review the changes. Every agent reads the diff
    with `git diff <from>..<to>` using the range from step 1, never `glab mr diff`. Each agent should return the list of issues, where each issue includes a description and the reason it was flagged (e.g. "CLAUDE.md adherence", "bug"). The agents should do the following:
 
@@ -119,6 +124,7 @@ Note: Still review Claude generated MRs.
 
 Use this list when evaluating issues in Steps 4 and 5 (these are false positives, do NOT flag):
 
+- Anything under `vendor/` or `node_modules/` — third-party code, never this team's
 - Pre-existing issues
 - Something that appears to be a bug but is actually correct
 - Pedantic nitpicks that a senior engineer would not flag
