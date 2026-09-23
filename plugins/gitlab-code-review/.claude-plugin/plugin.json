@@ -14,6 +14,5 @@
     ],
     "homepage": "https://github.com/algoritma-dev/claude-plugins",
     "repository": "https://github.com/algoritma-dev/claude-plugins",
-    "license": "MIT",
-    "commands": "./commands"
+    "license": "MIT"
 }
