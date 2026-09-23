@@ -1,7 +1,7 @@
 {
     "name": "glab-code-review",
     "description": "Automated code review for merge requests using multiple specialized agents with confidence-based scoring",
-    "version": "1.2.1",
+    "version": "1.3.0",
     "author": {
         "name": "Algoritma Team",
         "email": "info@algoritma.it"

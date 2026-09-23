@@ -261,7 +261,7 @@ Actions runs them, with `shellcheck`, on every change to the plugin.
 
 ## Version
 
-1.2.1
+1.3.0
 
 ## Author
 
