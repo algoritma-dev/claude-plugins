@@ -15,14 +15,14 @@ Performs automated code review on a pull request using multiple specialized agen
 **What it does:**
 1. Resolves the range to review: the whole merge request the first time, and only the
    commits added since its own previous review afterwards
-2. Checks whether a review is needed (skips closed, draft and trivial merge requests)
-3. Gathers relevant CLAUDE.md guideline files from the repository
-4. Summarizes the changes in that range
-5. Launches 4 parallel agents to independently review: two for CLAUDE.md compliance and
+2. Checks whether a review is needed: closed, merged and draft merge requests are skipped by
+   the range resolver, and trivial or automated ones by the main agent
+3. Lists the CLAUDE.md guideline files that govern the changed files
+4. Launches 4 parallel agents to independently review: two for CLAUDE.md compliance and
    two for bugs and logic errors
-6. Validates every candidate finding with a second agent, and drops the ones that do not
+5. Validates every candidate finding with a second agent, and drops the ones that do not
    survive validation
-7. Posts each surviving finding as an inline discussion on the changed line, then one
+6. Posts each surviving finding as an inline discussion on the changed line, then one
    summary note recording the reviewed head SHA
 
 **Usage:**
@@ -239,15 +239,21 @@ Boris Cherny (boris@anthropic.com)
 
 ## Version
 
-1.2.0
+1.2.1
 
 ## Running in CI
 
 The command runs headless under a CI job:
 
 ```bash
-claude -p "/glab-code-review $CI_MERGE_REQUEST_IID" --permission-mode bypassPermissions
+claude -p "/glab-code-review $CI_MERGE_REQUEST_IID"
 ```
+
+Do not add `--permission-mode bypassPermissions`. The command's `allowed-tools` list covers every
+call the review makes, subagents included, and in `-p` mode any other call is denied without a
+prompt. Bypassing that list gains nothing and hands the job's `api`-scoped `GITLAB_TOKEN` to
+whatever the merge request diff or description manages to inject into the prompt. Checked with
+Claude Code 2.1.280.
 
 Requirements in the job environment:
 
@@ -259,11 +265,6 @@ Requirements in the job environment:
 | `CI_MERGE_REQUEST_SOURCE_BRANCH_SHA` | Supplied by GitLab in merged results pipelines only. When set, it is the head the review covers instead of `CI_COMMIT_SHA`, which is then a temporary merge commit. |
 
 `ANTHROPIC_API_KEY` must not be set: it switches Claude Code to metered API billing.
-
-`bypassPermissions` ignores the command's `allowed-tools` list. The merge request diff and
-description are untrusted input, and the job holds a `GITLAB_TOKEN` with the `api` scope, so a
-prompt injection in the merge request could run any command the token allows. Run the job only on
-merge requests from trusted branches, and keep the token scoped to the one project.
 
 The repository must be checked out with full history (`GIT_DEPTH: 0`); the review diffs against the
 merge base and against the previously reviewed commit.

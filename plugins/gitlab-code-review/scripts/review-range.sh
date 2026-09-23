@@ -1,9 +1,11 @@
 #!/bin/sh
 # Resolves the git revision range the current review run should examine.
 #
-# Prints "<from>..<to>" on stdout. Exit 3 means there is nothing new since the
-# last review and the caller must post nothing. Exit 1 means the range could
-# not be resolved, and the caller must stop rather than guess.
+# Prints "<from>..<to>" on stdout. Exit 3 means there is nothing to review and
+# the caller must post nothing: the merge request is not open, is a draft, or
+# has no new commits since the last review. The reason goes to stderr. Exit 1
+# means the range could not be resolved, and the caller must stop rather than
+# guess.
 #
 # The previous review's head SHA is read from a marker the reviewer writes into
 # its own summary note: <!-- claude-review: <sha> -->. Only notes written by the
@@ -36,6 +38,21 @@ base="$CI_MERGE_REQUEST_DIFF_BASE_SHA"
 head="${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-$CI_COMMIT_SHA}"
 
 # glab api has no --jq flag; the filtering is jq's job.
+mr=$(glab api "projects/$CI_PROJECT_ID/merge_requests/$iid") \
+    || fail "cannot read merge request $iid"
+state=$(printf '%s' "$mr" | jq -r '.state // empty') \
+    || fail "merge request $iid returned no readable state"
+[ -n "$state" ] || fail "merge request $iid returned no state"
+if [ "$state" != "opened" ]; then
+    echo "review-range: merge request $iid is $state, nothing to review" >&2
+    exit 3
+fi
+# GitLab before 14.0 reports a draft only as work_in_progress.
+if [ "$(printf '%s' "$mr" | jq -r '.draft // .work_in_progress // false')" = "true" ]; then
+    echo "review-range: merge request $iid is a draft, nothing to review" >&2
+    exit 3
+fi
+
 bot=$(glab api "user" | jq -r '.username') \
     || fail "cannot read the authenticated account; check GITLAB_TOKEN"
 [ -n "$bot" ] && [ "$bot" != "null" ] \

@@ -39,10 +39,12 @@ setup_repo() {
     STUB_GLAB_CALLS="$WORK/calls.log"
     STUB_GLAB_REPLY="$WORK/notes.json"
     STUB_GLAB_REPLY_USER="$WORK/user.json"
+    STUB_GLAB_REPLY_MR="$WORK/mr.json"
     STUB_GLAB_FAIL_MATCH=""
-    export STUB_GLAB_CALLS STUB_GLAB_REPLY STUB_GLAB_REPLY_USER STUB_GLAB_FAIL_MATCH
+    export STUB_GLAB_CALLS STUB_GLAB_REPLY STUB_GLAB_REPLY_USER STUB_GLAB_REPLY_MR STUB_GLAB_FAIL_MATCH
     : > "$STUB_GLAB_CALLS"
     printf '{"username":"claude-bot"}\n' > "$STUB_GLAB_REPLY_USER"
+    printf '{"state":"opened","draft":false}\n' > "$STUB_GLAB_REPLY_MR"
     printf '[]\n' > "$STUB_GLAB_REPLY"
 
     CI_PROJECT_ID=42
@@ -182,6 +184,47 @@ status=$?
 set -e
 check "a missing CI variable exits 1" "1" "$status"
 check_contains "a missing CI variable names itself" "CI_PROJECT_ID" "$message"
+
+# A merge request that is not open, or is a draft, has nothing to review. The
+# check is deterministic, so it lives here rather than in an agent.
+for state in closed merged locked; do
+    setup_repo
+    printf '{"state":"%s","draft":false}\n' "$state" > "$STUB_GLAB_REPLY_MR"
+    set +e
+    actual=$(sh "$SCRIPT" 7 2>/dev/null)
+    status=$?
+    set -e
+    check "a $state merge request exits 3" "3" "$status"
+    check "a $state merge request prints no range" "" "$actual"
+done
+
+setup_repo
+printf '{"state":"opened","draft":true}\n' > "$STUB_GLAB_REPLY_MR"
+set +e
+message=$(sh "$SCRIPT" 7 2>&1 >/dev/null)
+status=$?
+set -e
+check "a draft merge request exits 3" "3" "$status"
+check_contains "a draft merge request says why it stops" "draft" "$message"
+
+# GitLab before 14.0 reports drafts only as work_in_progress.
+setup_repo
+printf '{"state":"opened","work_in_progress":true}\n' > "$STUB_GLAB_REPLY_MR"
+set +e
+sh "$SCRIPT" 7 >/dev/null 2>&1
+status=$?
+set -e
+check "a work_in_progress merge request exits 3" "3" "$status"
+
+# A failed read of the merge request is a failure, not a reason to review.
+setup_repo
+STUB_GLAB_FAIL_MATCH="merge_requests/7 "
+: > "$STUB_GLAB_REPLY_MR"
+set +e
+actual=$(sh "$SCRIPT" 7 2>/dev/null)
+status=$?
+set -e
+check "an unreadable merge request exits 1" "1" "$status"
 
 # Merged results pipeline: the review covers the source branch, not the
 # temporary merge commit. Recording the merge commit would make every later
