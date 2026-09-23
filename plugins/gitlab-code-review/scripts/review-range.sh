@@ -28,7 +28,12 @@ iid="${1:-}"
 [ -n "${CI_COMMIT_SHA:-}" ] || fail "CI_COMMIT_SHA is not set; this command currently runs only inside GitLab CI"
 
 base="$CI_MERGE_REQUEST_DIFF_BASE_SHA"
-head="$CI_COMMIT_SHA"
+# In a merged results pipeline CI_COMMIT_SHA is a temporary merge of the source
+# branch into the target, rebuilt on every run. The merge request's own head is
+# CI_MERGE_REQUEST_SOURCE_BRANCH_SHA, set only in that kind of pipeline. Taking
+# the merge commit would record a marker no later head descends from, and
+# every run would fall back to a full re-review.
+head="${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-$CI_COMMIT_SHA}"
 
 # glab api has no --jq flag; the filtering is jq's job.
 bot=$(glab api "user" | jq -r '.username') \
@@ -36,16 +41,16 @@ bot=$(glab api "user" | jq -r '.username') \
 [ -n "$bot" ] && [ "$bot" != "null" ] \
     || fail "the authenticated account has no username"
 
-# Newest first, so the first marker found is the current one. Reading only the
-# first page is then safe: on a busy merge request the newest notes are the
-# ones that fit.
-notes=$(glab api "projects/$CI_PROJECT_ID/merge_requests/$iid/notes?per_page=100&sort=desc") \
+# Newest first, so the first marker found is the current one. Every page is
+# read: system notes and inline comments count towards a page too, and a
+# marker pushed off the first one would trigger a full re-review.
+notes=$(glab api --paginate "projects/$CI_PROJECT_ID/merge_requests/$iid/notes?per_page=100&sort=desc") \
     || fail "cannot read the notes of merge request $iid"
 
 # A failed read is never treated as "no marker": that would silently re-review
 # the whole merge request and repost every finding already on it.
 marker=$(printf '%s' "$notes" \
-    | jq -r --arg bot "$bot" '.[] | select(.author.username == $bot) | .body' \
+    | jq -r --arg bot "$bot" 'if type == "array" then .[] else . end | select(.author.username == $bot) | .body' \
     | grep -o 'claude-review: [0-9a-f]\{40\} -->' \
     | head -n 1 \
     | cut -d' ' -f2) || true

@@ -3,6 +3,9 @@
 #
 # Usage: post-inline-comment.sh <mr_iid> <new_path> <new_line> <body_file>
 #
+# A <body_file> of "-" reads the comment from stdin, so the caller can pass it
+# as a here-doc instead of writing a temporary file.
+#
 # The request body is assembled as JSON with a nested "position" object and
 # sent with --input. Passing bracketed field names (position[new_line]=12)
 # would not work: glab puts them in the JSON body verbatim, GitLab does not
@@ -36,10 +39,17 @@ case "$new_line" in
     ''|*[!0-9]*) fail "line must be a positive integer, got '$new_line'" ;;
 esac
 
-[ -r "$body_file" ] || fail "cannot read body file $body_file"
+if [ "$body_file" != "-" ]; then
+    [ -r "$body_file" ] || fail "cannot read body file $body_file"
+fi
 [ -n "${CI_PROJECT_ID:-}" ] || fail "CI_PROJECT_ID is not set; this command currently runs only inside GitLab CI"
 
-body=$(cat "$body_file")
+if [ "$body_file" = "-" ]; then
+    body=$(cat)
+else
+    body=$(cat "$body_file")
+fi
+[ -n "$body" ] || fail "the comment body is empty"
 
 # glab api has no --jq flag; the filtering is jq's job.
 refs=$(glab api "projects/$CI_PROJECT_ID/merge_requests/$iid") \

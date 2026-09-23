@@ -82,6 +82,20 @@ check_equals "new_path is carried" "src/Core/Foo.php" "$(printf '%s' "$sent" | j
 check_equals "new_line is carried" "12" "$(printf '%s' "$sent" | jq -r '.position.new_line')"
 check_equals "the comment text survives quoting" "$BODY_TEXT" "$(printf '%s' "$sent" | jq -r '.body')"
 
+# A body of "-" is read from stdin, so the comment can be passed as a here-doc
+# and the command needs no file-writing permission.
+setup
+printf '%s\n' "$BODY_TEXT" | sh "$SCRIPT" 7 src/Core/Foo.php 12 -
+check_equals "a body read from stdin is sent" "$BODY_TEXT" "$(jq -r '.body' "$STUB_GLAB_STDIN")"
+
+# An empty body would post a blank discussion.
+setup
+set +e
+printf '' | sh "$SCRIPT" 7 src/Core/Foo.php 12 - 2>/dev/null
+status=$?
+set -e
+check_equals "an empty body exits 1" "1" "$status"
+
 # Review Focus 4 - an unresolvable position must not lose the finding.
 setup
 STUB_GLAB_FAIL_MATCH="discussions"

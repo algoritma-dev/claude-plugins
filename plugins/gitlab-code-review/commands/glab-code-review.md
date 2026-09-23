@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(glab mr view:*), Bash(glab mr diff:*), Bash(glab mr list:*), Bash(glab mr note:*), Bash(glab issue list:*), Bash(glab api:*), Bash(git diff:*), Bash(git log:*), Bash(git show:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/review-range.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/post-inline-comment.sh:*)
+allowed-tools: Bash(glab mr view:*), Bash(glab mr note:*), Bash(git diff:*), Bash(git log:*), Bash(git show:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/review-range.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/post-inline-comment.sh:*)
 description: Code review a merge request
 ---
 
@@ -78,7 +78,7 @@ Note: Still review Claude generated MRs.
 
    In addition to the above, each subagent should be told the MR title and description. This will help provide context regarding the author's intent.
 
-5. For each issue found in the previous step by agents 3 and 4, launch parallel subagents to validate the issue. These subagents should get the MR title and description along with a description of the issue. The agent's job is to review the issue to validate that the stated issue is truly an issue with high confidence. For example, if an issue such as "variable is not defined" was flagged, the subagent's job would be to validate that is actually true in the code. Another example would be CLAUDE.md issues. The agent should validate that the CLAUDE.md rule that was violated is scoped for this file and is actually violated. Use Opus subagents for bugs and logic issues, and sonnet agents for CLAUDE.md violations.
+5. For each issue found in the previous step by agents 1, 2, 3 and 4, launch parallel subagents to validate the issue. These subagents should get the MR title and description along with a description of the issue. The agent's job is to review the issue to validate that the stated issue is truly an issue with high confidence. For example, if an issue such as "variable is not defined" was flagged, the subagent's job would be to validate that is actually true in the code. Another example would be CLAUDE.md issues. The agent should validate that the CLAUDE.md rule that was violated is scoped for this file and is actually violated. Use Opus subagents for bugs and logic issues, and sonnet agents for CLAUDE.md violations.
 
 6. Filter out any issues that were not validated in step 5. This step will give us our list of high signal issues for our review.
 
@@ -87,12 +87,18 @@ Note: Still review Claude generated MRs.
 
 8. Create a list of all comments that you plan on leaving. This is only for you to make sure you are comfortable with the comments. Do not post this list anywhere.
 
-9. Post one inline comment per validated issue. Write the comment body to a temporary file and
-   post it:
+9. Post one inline comment per validated issue. Pass the comment body on stdin with a quoted
+   here-doc, so nothing in it is expanded by the shell and no temporary file is needed:
 
    ```bash
-   ${CLAUDE_PLUGIN_ROOT}/scripts/post-inline-comment.sh <MR> <path> <line> <body-file>
+   ${CLAUDE_PLUGIN_ROOT}/scripts/post-inline-comment.sh <MR> <path> <line> - <<'CLAUDE_REVIEW_EOF'
+   <comment body>
+   CLAUDE_REVIEW_EOF
    ```
+
+   `<line>` is the line number in the `<to>` revision from step 1. Take it from `git diff` or
+   `git show <to>:<path>`, never from the checked-out file: in a merged results pipeline the
+   working tree is a merge with the target branch and its line numbers can differ.
 
    The script resolves the diff refs itself; do not assemble the position by hand. A position
    GitLab cannot resolve falls back to a plain note automatically, and a non-zero exit means the

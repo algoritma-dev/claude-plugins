@@ -256,8 +256,14 @@ Requirements in the job environment:
 | `CLAUDE_CODE_OAUTH_TOKEN` | Claude subscription token from `claude setup-token`. |
 | `GITLAB_TOKEN` | GitLab token with the `api` scope. `read_api` returns 403 on every write. |
 | `CI_PROJECT_ID`, `CI_MERGE_REQUEST_IID`, `CI_MERGE_REQUEST_DIFF_BASE_SHA`, `CI_COMMIT_SHA` | Supplied by GitLab. |
+| `CI_MERGE_REQUEST_SOURCE_BRANCH_SHA` | Supplied by GitLab in merged results pipelines only. When set, it is the head the review covers instead of `CI_COMMIT_SHA`, which is then a temporary merge commit. |
 
 `ANTHROPIC_API_KEY` must not be set: it switches Claude Code to metered API billing.
+
+`bypassPermissions` ignores the command's `allowed-tools` list. The merge request diff and
+description are untrusted input, and the job holds a `GITLAB_TOKEN` with the `api` scope, so a
+prompt injection in the merge request could run any command the token allows. Run the job only on
+merge requests from trusted branches, and keep the token scoped to the one project.
 
 The repository must be checked out with full history (`GIT_DEPTH: 0`); the review diffs against the
 merge base and against the previously reviewed commit.

@@ -36,10 +36,12 @@ setup_repo() {
     PATH="$STUB_DIR:$PATH"
     export PATH
 
+    STUB_GLAB_CALLS="$WORK/calls.log"
     STUB_GLAB_REPLY="$WORK/notes.json"
     STUB_GLAB_REPLY_USER="$WORK/user.json"
     STUB_GLAB_FAIL_MATCH=""
-    export STUB_GLAB_REPLY STUB_GLAB_REPLY_USER STUB_GLAB_FAIL_MATCH
+    export STUB_GLAB_CALLS STUB_GLAB_REPLY STUB_GLAB_REPLY_USER STUB_GLAB_FAIL_MATCH
+    : > "$STUB_GLAB_CALLS"
     printf '{"username":"claude-bot"}\n' > "$STUB_GLAB_REPLY_USER"
     printf '[]\n' > "$STUB_GLAB_REPLY"
 
@@ -47,6 +49,21 @@ setup_repo() {
     CI_MERGE_REQUEST_DIFF_BASE_SHA="$BASE"
     CI_COMMIT_SHA="$HEAD_SHA"
     export CI_PROJECT_ID CI_MERGE_REQUEST_DIFF_BASE_SHA CI_COMMIT_SHA
+    unset CI_MERGE_REQUEST_SOURCE_BRANCH_SHA
+}
+
+# Turns the fixture into a merged results pipeline: CI_COMMIT_SHA becomes a
+# merge of the source head into a target branch that has moved on, and the
+# source head is only available as CI_MERGE_REQUEST_SOURCE_BRANCH_SHA.
+# Exports MERGE.
+merged_results_pipeline() {
+    git checkout -q -b target "$BASE"
+    echo target > other.txt && git add other.txt && git commit -qm target
+    git merge -q --no-edit "$HEAD_SHA"
+    MERGE=$(git rev-parse HEAD)
+    CI_COMMIT_SHA="$MERGE"
+    CI_MERGE_REQUEST_SOURCE_BRANCH_SHA="$HEAD_SHA"
+    export CI_COMMIT_SHA CI_MERGE_REQUEST_SOURCE_BRANCH_SHA
 }
 
 # Writes a notes fixture. Each argument is "author:sha"; the notes are written
@@ -165,6 +182,50 @@ status=$?
 set -e
 check "a missing CI variable exits 1" "1" "$status"
 check_contains "a missing CI variable names itself" "CI_PROJECT_ID" "$message"
+
+# Merged results pipeline: the review covers the source branch, not the
+# temporary merge commit. Recording the merge commit would make every later
+# marker a non-ancestor and turn each run into a full re-review.
+setup_repo
+merged_results_pipeline
+notes_fixture "claude-bot:$MID"
+actual=$(sh "$SCRIPT" 7)
+check "a merged results pipeline reviews up to the source head" "$MID..$HEAD_SHA" "$actual"
+
+setup_repo
+merged_results_pipeline
+actual=$(sh "$SCRIPT" 7)
+check "a first review in a merged results pipeline spans the source branch" "$BASE..$HEAD_SHA" "$actual"
+
+setup_repo
+merged_results_pipeline
+notes_fixture "claude-bot:$HEAD_SHA"
+set +e
+actual=$(sh "$SCRIPT" 7 2>/dev/null)
+status=$?
+set -e
+check "a new merge commit over an unchanged source head exits 3" "3" "$status"
+
+# An empty CI_MERGE_REQUEST_SOURCE_BRANCH_SHA is what a plain merge request
+# pipeline carries; CI_COMMIT_SHA is then the head.
+setup_repo
+CI_MERGE_REQUEST_SOURCE_BRANCH_SHA=""
+export CI_MERGE_REQUEST_SOURCE_BRANCH_SHA
+actual=$(sh "$SCRIPT" 7)
+check "an empty source branch SHA falls back to CI_COMMIT_SHA" "$BASE..$HEAD_SHA" "$actual"
+
+# Every page of notes is read. A busy merge request can bury the marker under
+# more than one page of newer notes, and missing it means a full re-review.
+setup_repo
+sh "$SCRIPT" 7 >/dev/null
+check_contains "the notes are read with --paginate" "--paginate" "$(cat "$STUB_GLAB_CALLS")"
+
+# Older glab versions print one JSON array per page, back to back.
+setup_repo
+printf '[{"author":{"username":"alice"},"body":"lgtm"}]\n[{"author":{"username":"claude-bot"},"body":"<!-- claude-review: %s -->"}]\n' \
+    "$MID" > "$STUB_GLAB_REPLY"
+actual=$(sh "$SCRIPT" 7)
+check "a marker on the second page is found" "$MID..$HEAD_SHA" "$actual"
 
 if [ "$failures" -gt 0 ]; then
     echo "$failures test(s) failed"
