@@ -32,7 +32,8 @@ The command currently runs only inside a GitLab CI merge request pipeline: it re
    - 1 agent scans the diff alone for obvious bugs
    - 1 agent looks for bugs, security issues and wrong logic in the changed code, reading the
      surrounding code as needed
-5. **Validates each finding** with a separate agent and drops the ones it cannot confirm.
+5. **Validates the findings**: merges duplicates, then has one agent per file and kind check each
+   finding, and drops the ones it cannot confirm.
 6. **Posts each confirmed finding** as an inline discussion with `scripts/post-inline-comment.sh`,
    with a committable suggestion when the fix is small and complete.
 7. **Posts one summary note** ending with `<!-- claude-review: <sha> -->`, the commit it reviewed.
@@ -63,8 +64,8 @@ Only high-signal issues:
 | Main agent: range, triage, filtering, posting | The session model: `--model` if given, otherwise the account default |
 | CLAUDE.md review, 2 agents | Sonnet |
 | Bug review, 2 agents | Opus |
-| Validation of a bug finding | Opus |
-| Validation of a CLAUDE.md finding | Sonnet |
+| Validation of bug findings, one agent per file | Opus |
+| Validation of CLAUDE.md findings, one agent per file | Sonnet |
 
 The main agent only orchestrates, so `--model sonnet` on the `claude -p` call lowers the cost of a
 run without changing the review agents. To change a review or validation model, edit
@@ -131,7 +132,7 @@ The command calls these scripts; each can also be run by hand inside a CI job.
 |---|---|---|
 | `review-range.sh <iid>` | Prints the `<from>..<to>` range to review. | 0 range printed, 3 nothing to review (reason on stderr), 1 failure |
 | `claude-md-files.sh <from>..<to>` | Prints the CLAUDE.md files that govern the changed files, as they exist in `<to>`. | 0, 1 failure |
-| `post-inline-comment.sh <iid> <path> <line> <body-file>` | Posts one inline discussion; a body file of `-` reads stdin. Falls back to a plain note when GitLab rejects the position. | 0 posted by either route, 1 not posted at all |
+| `post-inline-comment.sh <iid> <path> <line> <body-file>` | Posts one inline discussion on `<line>` of the reviewed head; a body file of `-` reads stdin. Falls back to a plain note when GitLab rejects the position. | 0 posted by either route, 1 not posted at all |
 
 ## Troubleshooting
 
@@ -154,9 +155,21 @@ The job log shows why:
 
 ### A finding appears as a plain note instead of an inline discussion
 
-GitLab rejected the position, for example because the line is outside the merge request diff.
-The job log shows `inline position rejected for <path>:<line>`. The finding is kept as a note
-that starts with the file and line.
+The job log says why:
+
+- `inline position rejected for <path>:<line> (<GitLab's answer>)`: GitLab could not place the
+  comment, for example because the line is outside the merge request diff.
+- `merge request N has no diff version for <sha>`: GitLab has not yet recorded a diff version
+  for the reviewed commit.
+
+The finding is kept as a note that starts with the file, the line and the commit the line number
+refers to.
+
+### A comment is shown on an older version of the diff
+
+Someone pushed while the review was running. Comments are anchored to the diff version of the
+commit that was reviewed, so they stay on the lines the agents read; GitLab shows them on that
+version and marks them outdated once the lines change. The next run reviews the new commits.
 
 ### `could not post the finding at all`
 
@@ -169,7 +182,8 @@ at least Reporter access to the project.
 sh plugins/gitlab-code-review/tests/run-tests.sh
 ```
 
-The tests stub `glab` and build throwaway git repositories; they need `git` and `jq`.
+The tests stub `glab` and build throwaway git repositories; they need `git` and `jq`. GitHub
+Actions runs them, with `shellcheck`, on every change to the plugin.
 
 ## Version
 

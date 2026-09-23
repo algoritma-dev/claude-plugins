@@ -6,13 +6,16 @@ SUITE_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PLUGIN_DIR=$(dirname "$SUITE_DIR")
 SCRIPT="$PLUGIN_DIR/scripts/review-range.sh"
 
+TEST_TMP=$(mktemp -d)
+trap 'rm -rf "$TEST_TMP"' EXIT
+
 failures=0
 
 # Builds a repository with three commits on the main line and one orphaned
 # commit that is a real object but not an ancestor of HEAD, which is what a
 # force-push leaves behind. Exports BASE, MID, HEAD_SHA and ORPHAN.
 setup_repo() {
-    WORK=$(mktemp -d)
+    WORK=$(mktemp -d "$TEST_TMP/XXXXXX")
     cd "$WORK"
     git init -q .
     git config user.email ci@algoritma.it
@@ -31,7 +34,7 @@ setup_repo() {
     echo three >> file.txt && git commit -qam three
     HEAD_SHA=$(git rev-parse HEAD)
 
-    STUB_DIR=$(mktemp -d)
+    STUB_DIR=$(mktemp -d "$TEST_TMP/XXXXXX")
     cp "$SUITE_DIR/stub-glab" "$STUB_DIR/glab"
     PATH="$STUB_DIR:$PATH"
     export PATH

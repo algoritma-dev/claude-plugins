@@ -6,6 +6,9 @@ SUITE_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PLUGIN_DIR=$(dirname "$SUITE_DIR")
 SCRIPT="$PLUGIN_DIR/scripts/claude-md-files.sh"
 
+TEST_TMP=$(mktemp -d)
+trap 'rm -rf "$TEST_TMP"' EXIT
+
 failures=0
 
 check() {
@@ -31,7 +34,7 @@ put() {
 # The second commit, the reviewed range, touches src/Core, lib and vendor, and
 # adds a guideline file of its own under api/. Exports FROM and TO.
 setup_repo() {
-    WORK=$(mktemp -d)
+    WORK=$(mktemp -d "$TEST_TMP/XXXXXX")
     cd "$WORK"
     git init -q .
     git config user.email ci@algoritma.it
