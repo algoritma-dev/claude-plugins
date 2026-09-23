@@ -1,15 +1,23 @@
 ---
-allowed-tools: Bash(glab mr view:*), Bash(glab mr note:*), Bash(git diff:*), Bash(git log:*), Bash(git show:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/review-range.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/claude-md-files.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/post-inline-comment.sh:*)
-description: Code review a merge request
+allowed-tools: Bash(git diff:*), Bash(git log:*), Bash(git show:*), Bash(git grep:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/review-range.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/claude-md-files.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/post-inline-comment.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/post-summary-note.sh:*)
+description: Review a GitLab merge request and post the findings on it as inline comments. Use when asked to review merge request N, optionally of project P (ID or path), from a developer's machine or in GitLab CI.
+argument-hint: <merge-request-iid> [<project-id-or-path>]
 ---
 
-Provide a code review for the given merge request.
+Provide a code review for the given merge request, and post it on the merge request.
+
+The request: $ARGUMENTS
+
+Take the merge request IID from the request, and the project if the request names one: a numeric
+ID such as `1234` or a path such as `group/app`. Without a project, the scripts use the CI job's
+project, or on a developer's machine the project of the clone the session runs in.
 
 **Agent assumptions (applies to all agents and subagents):**
 - All tools are functional and will work without error. Do not test tools or make exploratory calls. Make sure this is clear to every subagent that is launched.
 - Only call a tool if it is required to complete the task. Every tool call should have a clear purpose.
 - Do not invoke skills or slash commands, this one included; everything the review needs is in this file.
 - Run every command exactly as this file shows it, from the repository root: no `git -C`, no `cd`, nothing chained or piped onto it (`; echo $?`, `| cat -n`). Only the listed command prefixes are permitted and anything else is denied; the Bash tool already reports each exit code. Make sure this is clear to every subagent that is launched.
+- The working tree is not the merge request's code: on a developer's machine it is whatever branch is checked out, and in a merged results pipeline it is a merge with the target branch. Read every file of the project at the reviewed head with `git show <to>:<path>`, list files with `git show <to>:<dir>/`, and search with `git grep <pattern> <to> -- <path>`. Take every line number from there. Only `vendor/` and `node_modules/`, which are installed rather than committed, are read from the working tree. Make sure this is clear to every subagent that is launched.
 
 To do this, follow these steps precisely:
 
@@ -18,20 +26,24 @@ To do this, follow these steps precisely:
    Run the range resolver:
 
    ```bash
-   ${CLAUDE_PLUGIN_ROOT}/scripts/review-range.sh <MR>
+   ${CLAUDE_PLUGIN_ROOT}/scripts/review-range.sh <MR> [<project>]
    ```
 
    - Exit code 3: there is nothing to review. The merge request is closed, merged or a draft, or
      has no new commits since the last review; stderr says which. Stop. Post nothing.
-   - Exit code 0: the printed `<from>..<to>` range is what you review. Everything outside it has
-     already been reviewed and must not be commented on again.
-   - Any other exit code: stop and report the failure.
+   - Exit code 0: it prints one JSON object. Keep `project_id`, `iid`, `from`, `to`, `title`,
+     `description` and `web_url`; below, `<project_id>`, `<MR>`, `<from>` and `<to>` stand for
+     these values. The range `<from>..<to>` is what you review. Everything outside it has already
+     been reviewed and must not be commented on again.
+   - Any other exit code: stop and report the failure. It usually says the session is not in a
+     clone of the project; say so to the user.
 
-   Then run `glab mr view <MR> --output json` and `git diff --stat <from>..<to>` yourself, without
-   a subagent. Keep the MR title and description: every subagent below receives them, as context
-   on the author's intent. Keep the project URL too, for code links: it is the `web_url` field
-   with its trailing `/-/merge_requests/<MR>` removed. Stop, and post nothing, only when the merge request plainly does not need a
-   code review, such as an automated dependency bump or a trivial change that is obviously
+   Every subagent below receives the MR title and description, as context on the author's intent.
+   The project URL, for code links, is `web_url` with its trailing `/-/merge_requests/<MR>`
+   removed.
+
+   Then run `git diff --stat <from>..<to>` yourself, without a subagent. Stop, and post nothing,
+   only when the merge request plainly does not need a code review, such as an automated dependency bump or a trivial change that is obviously
    correct. Do not stop merely because Claude has commented before — that is the normal
    incremental case, and the range already excludes what those comments covered.
 
@@ -48,10 +60,10 @@ Note: Still review Claude generated MRs.
    list means there are no guidelines to check; agents 1 and 2 of step 3 are then skipped.
 
 3. Launch 4 agents in parallel to independently review the changes. Every agent reads the diff
-   with `git diff <from>..<to>` using the range from step 1, never `glab mr diff`, which always
-   returns the whole merge request. Except where agent 3's instructions say otherwise, agents
-   read surrounding files freely: the repository is checked out, and the point of reviewing here
-   rather than from the diff alone is that the code around the change is available.
+   with `git diff <from>..<to>` using the range from step 1. Except where agent 3's instructions
+   say otherwise, agents read surrounding code freely, at `<to>` as the assumptions above say: the
+   point of reviewing here rather than from the diff alone is that the code around the change is
+   available.
 
    `vendor/` is installed. Open it to understand what the changed code calls — a framework base
    class, an interface the change implements, the signature of a method it passes arguments to.
@@ -108,16 +120,15 @@ Note: Still review Claude generated MRs.
    here-doc, so nothing in it is expanded by the shell and no temporary file is needed:
 
    ```bash
-   ${CLAUDE_PLUGIN_ROOT}/scripts/post-inline-comment.sh <MR> <path> <line> - <<'CLAUDE_REVIEW_EOF'
+   ${CLAUDE_PLUGIN_ROOT}/scripts/post-inline-comment.sh <project_id> <MR> <to> <path> <line> - <<'CLAUDE_REVIEW_EOF'
    <comment body>
    CLAUDE_REVIEW_EOF
    ```
 
-   `<line>` is the line number in the `<to>` revision from step 1. Take it from `git diff` or
-   `git show <to>:<path>`, never from the checked-out file: in a merged results pipeline the
-   working tree is a merge with the target branch and its line numbers can differ.
+   `<line>` is the line number in `<to>`, taken from `git diff` or `git show <to>:<path>`, never
+   from the working tree.
 
-   The script resolves the diff refs itself; do not assemble the position by hand. A position
+   The script works out the position itself; do not assemble it by hand. A position
    GitLab cannot resolve falls back to a plain note automatically, and a non-zero exit means the
    finding reached the merge request by neither route — report that rather than continuing
    silently.
@@ -135,15 +146,12 @@ Note: Still review Claude generated MRs.
     issues were found:
 
     ```bash
-    glab mr note <MR> --message "## Code review
-
+    ${CLAUDE_PLUGIN_ROOT}/scripts/post-summary-note.sh <project_id> <MR> <to> - <<'CLAUDE_REVIEW_EOF'
     <one line: 'No issues found. Checked for bugs and CLAUDE.md compliance.' or 'N issue(s) commented inline.'>
-
-    <!-- claude-review: <to-sha-from-step-1> -->"
+    CLAUDE_REVIEW_EOF
     ```
 
-    The `<to-sha>` is the right-hand side of the range from step 1 — the full 40-character SHA,
-    never an abbreviation. The marker must be the last line of the note.
+    Pass only that line. The script adds the heading and the marker recording `<to>`.
 
 Use this list when evaluating issues in Steps 3 and 4 (these are false positives, do NOT flag):
 
@@ -157,8 +165,9 @@ Use this list when evaluating issues in Steps 3 and 4 (these are false positives
 
 Notes:
 
-- Use glab CLI to interact with GitLab (e.g., `glab mr view`). Do not use web fetch.
+- Reach GitLab only through the scripts above. Do not use web fetch.
 - Create a todo list before starting.
+- When you finish, tell the user in one or two lines what was posted, with the merge request's `web_url`.
 - You must cite and link each issue in inline comments (e.g., if referring to a CLAUDE.md, include a link to it).
 - When linking to code in inline comments, start from the project URL kept in step 1, which is right for self-hosted GitLab too, and follow this format precisely, otherwise the Markdown preview won't render correctly: <project-url>/-/blob/c21d3c10bc8e898b7ac1a2d745bdc9bc4e423afe/package.json#L10-15
     - Requires full git sha

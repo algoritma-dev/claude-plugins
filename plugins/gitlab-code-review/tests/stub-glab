@@ -7,6 +7,8 @@
 #   $STUB_GLAB_REPLY       stdout for a generic call
 #   $STUB_GLAB_REPLY_USER  stdout for `api user`, when set
 #   $STUB_GLAB_REPLY_MR    stdout for reading one merge request, when set
+#   $STUB_GLAB_REPLY_REPO  stdout for `repo view`; without it the call fails,
+#                          as it does outside a clone of a GitLab project
 #   $STUB_GLAB_FAIL_MATCH  a call whose arguments contain this substring exits 22;
 #                          the arguments are matched with a trailing space, so
 #                          "merge_requests/7 " names that endpoint alone
@@ -52,6 +54,14 @@ if [ -n "${STUB_GLAB_FAIL_MATCH:-}" ]; then
 fi
 
 case "$*" in
+    "repo view"*)
+        if [ -n "${STUB_GLAB_REPLY_REPO:-}" ] && [ -r "$STUB_GLAB_REPLY_REPO" ]; then
+            cat "$STUB_GLAB_REPLY_REPO"
+            exit 0
+        fi
+        echo "stub-glab: not a GitLab repository" >&2
+        exit 1
+        ;;
     *"api user"*)
         if [ -n "${STUB_GLAB_REPLY_USER:-}" ] && [ -r "$STUB_GLAB_REPLY_USER" ]; then
             cat "$STUB_GLAB_REPLY_USER"

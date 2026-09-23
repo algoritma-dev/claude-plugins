@@ -57,12 +57,11 @@ setup() {
     BODY_TEXT='Missing null check — see "Foo::bar", line 3.'
     printf '%s\n' "$BODY_TEXT" > "$BODY_FILE"
 
-    # The diff version cache lives in TMPDIR; each test gets its own.
+    # The diff version cache lives in TMPDIR; each test gets its own. The
+    # script must not depend on pipeline variables, so none are set.
     TMPDIR="$WORK"
-    CI_PROJECT_ID=42
-    CI_COMMIT_SHA="$HEAD_SHA"
-    export TMPDIR CI_PROJECT_ID CI_COMMIT_SHA
-    unset CI_MERGE_REQUEST_SOURCE_BRANCH_SHA
+    export TMPDIR
+    unset CI_PROJECT_ID CI_COMMIT_SHA CI_MERGE_REQUEST_SOURCE_BRANCH_SHA
 }
 
 # POSIX sh functions share the caller's variables, so these use names the
@@ -97,7 +96,7 @@ sent() {
 # "position[new_line]" key would reach GitLab as an ordinary unpositioned
 # comment and the placement would be lost without any error.
 setup
-sh "$SCRIPT" 7 src/Core/Foo.php 4 "$BODY_FILE"
+sh "$SCRIPT" 42 7 "$HEAD_SHA" src/Core/Foo.php 4 "$BODY_FILE"
 calls=$(cat "$STUB_GLAB_CALLS")
 check_contains "reads the diff versions" "projects/42/merge_requests/7/versions" "$calls"
 check_contains "posts to the discussions endpoint" "projects/42/merge_requests/7/discussions" "$calls"
@@ -129,45 +128,52 @@ check_equals "an unrenamed file keeps its path as old_path" "src/Core/Foo.php" "
 # An unchanged line needs old_line too, or GitLab rejects the position. Line 8
 # of the reviewed head was line 6 before the two inserted lines.
 setup
-sh "$SCRIPT" 7 src/Core/Foo.php 8 "$BODY_FILE"
+sh "$SCRIPT" 42 7 "$HEAD_SHA" src/Core/Foo.php 8 "$BODY_FILE"
 check_equals "an unchanged line carries its old line number" "6" "$(sent '.position.old_line')"
 check_equals "an unchanged line keeps its new line number" "8" "$(sent '.position.new_line')"
 
 # Lines above the change keep their number.
 setup
-sh "$SCRIPT" 7 src/Core/Foo.php 2 "$BODY_FILE"
+sh "$SCRIPT" 42 7 "$HEAD_SHA" src/Core/Foo.php 2 "$BODY_FILE"
 check_equals "a line above the change has the same old line" "2" "$(sent '.position.old_line')"
 
 # A renamed file is addressed by its old path on the old side.
 setup
-sh "$SCRIPT" 7 src/New.php 2 "$BODY_FILE"
+sh "$SCRIPT" 42 7 "$HEAD_SHA" src/New.php 2 "$BODY_FILE"
 check_equals "a renamed file carries its old path" "src/Old.php" "$(sent '.position.old_path')"
 check_equals "a renamed file carries its old line" "2" "$(sent '.position.old_line')"
 
-# In a merged results pipeline the reviewed head is the source branch head.
+# A project path works as well as a numeric ID.
 setup
-CI_COMMIT_SHA=0123456789abcdef0123456789abcdef01234567
-CI_MERGE_REQUEST_SOURCE_BRANCH_SHA="$HEAD_SHA"
-export CI_COMMIT_SHA CI_MERGE_REQUEST_SOURCE_BRANCH_SHA
-sh "$SCRIPT" 7 src/Core/Foo.php 4 "$BODY_FILE"
-check_equals "a merged results pipeline anchors to the source head" "$HEAD_SHA" "$(sent '.position.head_sha')"
+sh "$SCRIPT" team/app 7 "$HEAD_SHA" src/Core/Foo.php 4 "$BODY_FILE"
+check_contains "a project path is encoded in the URL" "projects/team%2Fapp/merge_requests/7/discussions" "$(cat "$STUB_GLAB_CALLS")"
+
+# The reviewed head must be a full SHA: it selects the diff version.
+for bad in "" b468eb8 HEAD; do
+    setup
+    set +e
+    sh "$SCRIPT" 42 7 "$bad" src/Core/Foo.php 4 "$BODY_FILE" 2>/dev/null
+    status=$?
+    set -e
+    check_equals "to_sha '$bad' is rejected" "1" "$status"
+done
 
 # The diff version is read once per review, not once per comment.
 setup
-sh "$SCRIPT" 7 src/Core/Foo.php 4 "$BODY_FILE"
-sh "$SCRIPT" 7 src/Core/Foo.php 8 "$BODY_FILE"
+sh "$SCRIPT" 42 7 "$HEAD_SHA" src/Core/Foo.php 4 "$BODY_FILE"
+sh "$SCRIPT" 42 7 "$HEAD_SHA" src/Core/Foo.php 8 "$BODY_FILE"
 check_equals "the versions are read once for two comments" "1" "$(grep -c '/versions' "$STUB_GLAB_CALLS")"
 
 # A body of "-" is read from stdin, so the comment can be passed as a here-doc
 # and the command needs no file-writing permission.
 setup
-printf '%s\n' "$BODY_TEXT" | sh "$SCRIPT" 7 src/Core/Foo.php 4 -
+printf '%s\n' "$BODY_TEXT" | sh "$SCRIPT" 42 7 "$HEAD_SHA" src/Core/Foo.php 4 -
 check_equals "a body read from stdin is sent" "$BODY_TEXT" "$(sent '.body')"
 
 # An empty body would post a blank discussion.
 setup
 set +e
-printf '' | sh "$SCRIPT" 7 src/Core/Foo.php 4 - 2>/dev/null
+printf '' | sh "$SCRIPT" 42 7 "$HEAD_SHA" src/Core/Foo.php 4 - 2>/dev/null
 status=$?
 set -e
 check_equals "an empty body exits 1" "1" "$status"
@@ -175,7 +181,7 @@ check_equals "an empty body exits 1" "1" "$status"
 for line in 0 012 -3 abc; do
     setup
     set +e
-    sh "$SCRIPT" 7 src/Core/Foo.php "$line" "$BODY_FILE" 2>/dev/null
+    sh "$SCRIPT" 42 7 "$HEAD_SHA" src/Core/Foo.php "$line" "$BODY_FILE" 2>/dev/null
     status=$?
     set -e
     check_equals "line '$line' is rejected" "1" "$status"
@@ -186,11 +192,11 @@ setup
 STUB_GLAB_FAIL_MATCH="discussions"
 export STUB_GLAB_FAIL_MATCH
 set +e
-message=$(sh "$SCRIPT" 7 src/Deleted.php 3 "$BODY_FILE" 2>&1)
+message=$(sh "$SCRIPT" 42 7 "$HEAD_SHA" src/Deleted.php 3 "$BODY_FILE" 2>&1)
 status=$?
 set -e
 check_equals "a rejected position still exits 0" "0" "$status"
-check_contains "a rejected position falls back to a plain note" "mr note" "$(cat "$STUB_GLAB_CALLS")"
+check_contains "a rejected position falls back to a plain note" "merge_requests/7/notes" "$(cat "$STUB_GLAB_CALLS")"
 check_contains "the fallback says what GitLab answered" "simulated failure" "$message"
 
 # A suggestion block cannot be applied from a plain note, so the fallback turns
@@ -199,15 +205,15 @@ setup
 STUB_GLAB_FAIL_MATCH="discussions"
 export STUB_GLAB_FAIL_MATCH
 printf 'Use the parameter.\n\n```suggestion:-0+0\nreturn count($xs);\n```\n' > "$BODY_FILE"
-sh "$SCRIPT" 7 src/Core/Foo.php 4 "$BODY_FILE" 2>/dev/null
-note=$(grep 'mr note' "$STUB_GLAB_CALLS" || true)
+sh "$SCRIPT" 42 7 "$HEAD_SHA" src/Core/Foo.php 4 "$BODY_FILE" 2>/dev/null
+note=$(sent '.body')
 if printf '%s' "$note" | grep -q 'suggestion'; then
     echo "FAIL - the fallback note still carries a suggestion block"
     failures=$((failures + 1))
 else
     echo "ok   - the fallback note carries no suggestion block"
 fi
-check_contains "the fallback note keeps the suggested code" 'return count($xs);' "$(cat "$STUB_GLAB_CALLS")"
+check_contains "the fallback note keeps the suggested code" 'return count($xs);' "$note"
 
 # No diff version for the reviewed head yet: the finding still reaches the merge
 # request, as a note naming the commit its line number refers to.
@@ -215,12 +221,12 @@ setup
 printf '[{"id":2,"head_commit_sha":"%s","base_commit_sha":"%s","start_commit_sha":"%s"}]\n' \
     "$NEWER" "$BASE" "$BASE" > "$STUB_GLAB_REPLY"
 set +e
-sh "$SCRIPT" 7 src/Core/Foo.php 4 "$BODY_FILE" 2>/dev/null
+sh "$SCRIPT" 42 7 "$HEAD_SHA" src/Core/Foo.php 4 "$BODY_FILE" 2>/dev/null
 status=$?
 set -e
 check_equals "a head with no diff version still exits 0" "0" "$status"
-check_contains "a head with no diff version falls back to a plain note" "mr note" "$(cat "$STUB_GLAB_CALLS")"
-check_contains "the note names the reviewed commit" "$HEAD_SHA" "$(cat "$STUB_GLAB_CALLS")"
+check_contains "a head with no diff version falls back to a plain note" "merge_requests/7/notes" "$(cat "$STUB_GLAB_CALLS")"
+check_contains "the note names the reviewed commit" "$HEAD_SHA" "$(sent '.body')"
 
 # Review Focus 2 - when every write fails the script must not report success.
 setup
@@ -228,14 +234,13 @@ cat > "$STUB_DIR/glab" <<'STUB'
 #!/bin/sh
 echo "$*" >> "$STUB_GLAB_CALLS"
 case "$*" in
-    *discussions*) cat > /dev/null; echo "403 Forbidden" >&2; exit 1 ;;
-    *"mr note"*) echo "403 Forbidden" >&2; exit 1 ;;
+    *discussions*|*/notes*) cat > /dev/null; echo "403 Forbidden" >&2; exit 1 ;;
 esac
 cat "$STUB_GLAB_REPLY"
 STUB
 chmod +x "$STUB_DIR/glab"
 set +e
-sh "$SCRIPT" 7 src/Core/Foo.php 4 "$BODY_FILE" 2>/dev/null
+sh "$SCRIPT" 42 7 "$HEAD_SHA" src/Core/Foo.php 4 "$BODY_FILE" 2>/dev/null
 status=$?
 set -e
 check_equals "a read-only token makes the script fail" "1" "$status"
@@ -245,7 +250,7 @@ setup
 STUB_GLAB_FAIL_MATCH="versions"
 export STUB_GLAB_FAIL_MATCH
 set +e
-sh "$SCRIPT" 7 src/Core/Foo.php 4 "$BODY_FILE" 2>/dev/null
+sh "$SCRIPT" 42 7 "$HEAD_SHA" src/Core/Foo.php 4 "$BODY_FILE" 2>/dev/null
 status=$?
 set -e
 check_equals "unreadable diff versions exit 1" "1" "$status"

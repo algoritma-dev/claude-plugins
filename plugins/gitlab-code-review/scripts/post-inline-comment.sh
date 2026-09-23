@@ -1,11 +1,12 @@
 #!/bin/sh
 # Posts one review finding to a merge request as an inline discussion.
 #
-# Usage: post-inline-comment.sh <mr_iid> <new_path> <new_line> <body_file>
+# Usage: post-inline-comment.sh <project_id> <mr_iid> <to_sha> <new_path> <new_line> <body_file>
 #
-# <new_line> is a line number in the reviewed head. A <body_file> of "-" reads
-# the comment from stdin, so the caller can pass it as a here-doc instead of
-# writing a temporary file.
+# <project_id>, <mr_iid> and <to_sha> are the project_id, iid and to that
+# review-range.sh printed; <new_line> is a line number in <to_sha>, the
+# reviewed head. A <body_file> of "-" reads the comment from stdin, so the
+# caller can pass it as a here-doc instead of writing a temporary file.
 #
 # The request body is assembled as JSON with a nested "position" object and
 # sent with --input. Passing bracketed field names (position[new_line]=12)
@@ -32,14 +33,19 @@ fail() {
     exit 1
 }
 
-iid="${1:-}"
-new_path="${2:-}"
-new_line="${3:-}"
-body_file="${4:-}"
+project="${1:-}"
+iid="${2:-}"
+head="${3:-}"
+new_path="${4:-}"
+new_line="${5:-}"
+body_file="${6:-}"
 
-if [ -z "$iid" ] || [ -z "$new_path" ] || [ -z "$new_line" ] || [ -z "$body_file" ]; then
-    fail "usage: post-inline-comment.sh <mr_iid> <new_path> <new_line> <body_file>"
+if [ -z "$project" ] || [ -z "$iid" ] || [ -z "$head" ] || [ -z "$new_path" ] || [ -z "$new_line" ] || [ -z "$body_file" ]; then
+    fail "usage: post-inline-comment.sh <project_id> <mr_iid> <to_sha> <new_path> <new_line> <body_file>"
 fi
+printf '%s' "$head" | grep -Eq '^[0-9a-f]{40}$' || fail "to_sha must be a full 40-character SHA, got '$head'"
+# A path goes into the URL with its slashes encoded.
+project_ref=$(printf '%s' "$project" | sed 's|/|%2F|g')
 
 # jq --argjson rejects a leading zero, and GitLab has no line 0.
 case "$new_line" in
@@ -54,18 +60,16 @@ else
 fi
 [ -n "$body" ] || fail "the comment body is empty"
 
-[ -n "${CI_PROJECT_ID:-}" ] || fail "CI_PROJECT_ID is not set; this command currently runs only inside GitLab CI"
-# The same head review-range.sh resolves: the source branch head in a merged
-# results pipeline, CI_COMMIT_SHA otherwise.
-head="${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-${CI_COMMIT_SHA:-}}"
-[ -n "$head" ] || fail "CI_COMMIT_SHA is not set; this command currently runs only inside GitLab CI"
-
 # Posts the finding as a plain note, the route that needs no position.
 post_note() {
     # A suggestion block can only be applied from a positioned discussion; in a
     # note it is an ordinary code block.
     note_body=$(printf '%s\n' "$body" | sed 's/^\([[:space:]]*\)```suggestion.*$/\1```/')
-    if err=$(glab mr note "$iid" --message "\`$new_path:$new_line\` at $head — $note_body" 2>&1 >/dev/null); then
+    note_payload=$(jq -n --arg body "\`$new_path:$new_line\` at $head — $note_body" '{body: $body}')
+    if err=$(printf '%s' "$note_payload" | glab api --method POST \
+        "projects/$project_ref/merge_requests/$iid/notes" \
+        -H "Content-Type: application/json" \
+        --input - 2>&1 >/dev/null); then
         exit 0
     fi
     fail "could not post the finding at all ($err); check that the token carries the 'api' scope"
@@ -73,7 +77,7 @@ post_note() {
 
 # One review posts several comments against the same head, so the diff version
 # is looked up once and kept for the rest of the run.
-cache="${TMPDIR:-/tmp}/claude-review-$CI_PROJECT_ID-$iid-$head"
+cache="${TMPDIR:-/tmp}/claude-review-$project_ref-$iid-$head"
 refs=""
 if [ -r "$cache" ]; then
     refs=$(grep -E '^[0-9a-f]{40} [0-9a-f]{40} [0-9a-f]{40}$' "$cache" || true)
@@ -81,7 +85,7 @@ fi
 if [ -z "$refs" ]; then
     # glab api has no --jq flag; the filtering is jq's job. Older glab versions
     # print one array per page, hence the type test.
-    versions=$(glab api --paginate "projects/$CI_PROJECT_ID/merge_requests/$iid/versions") \
+    versions=$(glab api --paginate "projects/$project_ref/merge_requests/$iid/versions") \
         || fail "cannot read the diff versions of merge request $iid"
     refs=$(printf '%s' "$versions" | jq -r --arg head "$head" '
         [if type == "array" then .[] else . end | select(.head_commit_sha == $head)][0]
@@ -146,7 +150,7 @@ payload=$(jq -n \
     }')
 
 if err=$(printf '%s' "$payload" | glab api --method POST \
-    "projects/$CI_PROJECT_ID/merge_requests/$iid/discussions" \
+    "projects/$project_ref/merge_requests/$iid/discussions" \
     -H "Content-Type: application/json" \
     --input - 2>&1 >/dev/null); then
     exit 0

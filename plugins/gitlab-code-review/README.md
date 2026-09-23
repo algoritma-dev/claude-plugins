@@ -9,22 +9,36 @@ only the commits pushed since the previous review.
 
 ## Command
 
-### `/glab-code-review <merge-request-iid>`
+### `/glab-code-review <merge-request-iid> [<project-id-or-path>]`
 
 **This command writes to the merge request.** It posts inline comments and a summary note every
 time it runs; there is no terminal-only mode. The summary note records the reviewed commit and is
 what makes the next review incremental, so it is posted even when no issues are found.
 
-The command currently runs only inside a GitLab CI merge request pipeline: it reads the pipeline's
-`CI_*` variables, and outside a CI job it stops with a message naming the missing variable.
+It runs in two places:
+
+- **On a developer's machine**, from a clone of the project. Use the command, or ask in plain
+  words:
+
+  ```text
+  /glab-code-review 123 4567
+  Fai la code review della merge request numero 123 del progetto numero 4567
+  ```
+
+  The project is a numeric ID or a path such as `group/app`. Without one, the review uses the
+  project of the clone. The comments go straight onto the merge request on GitLab. See
+  [Running locally](#running-locally).
+- **In a GitLab CI merge request pipeline**, where the project and the commits come from the
+  pipeline. See [Running in CI](#running-in-ci).
 
 **What it does:**
 
-1. **Resolves the range to review** with `scripts/review-range.sh`. It stops without posting when
-   the merge request is closed, merged, locked or a draft, or has no new commits since the last
-   review.
-2. **Reads the merge request** (title, description, project URL) and skips it when it plainly
-   needs no review, such as an automated dependency bump.
+1. **Resolves the range to review** with `scripts/review-range.sh`, which also reads the merge
+   request's title, description and URL. It stops without posting when the merge request is
+   closed, merged, locked or a draft, or has no new commits since the last review. On a
+   developer's machine it fetches the merge request's commits when the clone lacks them.
+2. **Triages the merge request**, and skips it when it plainly needs no review, such as an
+   automated dependency bump.
 3. **Lists the CLAUDE.md files** that govern the changed files with `scripts/claude-md-files.sh`:
    the root one and any in the directory of a changed file or its parents.
 4. **Reviews the change** with 4 agents in parallel:
@@ -36,7 +50,11 @@ The command currently runs only inside a GitLab CI merge request pipeline: it re
    finding, and drops the ones it cannot confirm.
 6. **Posts each confirmed finding** as an inline discussion with `scripts/post-inline-comment.sh`,
    with a committable suggestion when the fix is small and complete.
-7. **Posts one summary note** ending with `<!-- claude-review: <sha> -->`, the commit it reviewed.
+7. **Posts one summary note** with `scripts/post-summary-note.sh`, ending with
+   `<!-- claude-review: <sha> -->`, the commit it reviewed.
+
+The agents read the code at the reviewed commit through git, never from the working tree, so the
+branch checked out locally does not matter.
 
 ### What gets flagged
 
@@ -71,6 +89,50 @@ The main agent only orchestrates, so `--model sonnet` on the `claude -p` call lo
 run without changing the review agents. To change a review or validation model, edit
 `commands/glab-code-review.md`.
 
+## Running locally
+
+Requirements:
+
+- A clone of the project, with a remote (`origin` by default) that points at it on GitLab. The
+  branch checked out does not matter, and uncommitted changes are left alone. When the clone lacks
+  the merge request's commits, the review runs
+  `git fetch origin refs/merge-requests/<iid>/head`; set `CLAUDE_REVIEW_REMOTE` to use another
+  remote.
+- `glab` authenticated against the GitLab host (`glab auth login`) with the `api` scope, plus
+  `git` and `jq` on `PATH`.
+
+Comments and the summary note are posted as your GitLab account.
+
+### Permissions
+
+Run as `/glab-code-review`, the command's `allowed-tools` pre-approve every call the review makes.
+
+Asked in plain words, the model invokes the command itself, and Claude Code 2.1.280 does not apply
+`allowed-tools` to that invocation, although the documentation says it should. In an interactive
+session Claude Code then asks before each call to one of the plugin's scripts; in `claude -p`
+those calls are denied. To skip those prompts,
+allow the scripts in `~/.claude/settings.json`, with your home directory in place of
+`/home/you`:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(/home/you/.claude/plugins/cache/algoritma-marketplace/gitlab-code-reviewer/*/scripts/*.sh *)"
+    ]
+  }
+}
+```
+
+The `*` in place of the version keeps the rule working across plugin updates.
+
+### Local and CI reviews of the same merge request
+
+Each run only trusts the review markers of the account it runs as, so a local run does not see
+where the CI bot left off and reviews the whole merge request again. To share the progress, list
+the other account in `CLAUDE_REVIEW_TRUSTED_AUTHORS`, comma-separated, for example the CI bot's
+username in your shell profile and your own in the CI job.
+
 ## Running in CI
 
 The command runs headless in a merge request pipeline:
@@ -101,13 +163,17 @@ The job image needs `claude`, `glab`, `git` and `jq` on `PATH`.
 | `GITLAB_TOKEN` | GitLab token with the `api` scope, used by `glab`. With `read_api` every write returns 403. |
 | `CI_PROJECT_ID`, `CI_MERGE_REQUEST_IID`, `CI_MERGE_REQUEST_DIFF_BASE_SHA`, `CI_COMMIT_SHA` | Supplied by GitLab. |
 | `CI_MERGE_REQUEST_SOURCE_BRANCH_SHA` | Supplied by GitLab in merged results pipelines only. When set, it is the head the review covers instead of `CI_COMMIT_SHA`, which is then a temporary merge commit. |
+| `CLAUDE_REVIEW_TRUSTED_AUTHORS` | Optional. Comma-separated GitLab usernames whose review markers count besides the job's own account. See [Local and CI reviews](#local-and-ci-reviews-of-the-same-merge-request). |
+
+The pipeline variables are used only when the job belongs to the merge request being reviewed;
+otherwise the review reads base and head from the API, as it does locally.
 
 `ANTHROPIC_API_KEY` must not be set: it switches Claude Code to metered API billing.
 
 The repository must be checked out with full history (`GIT_DEPTH: 0`): the review diffs against
 the merge base and against the previously reviewed commit.
 
-### Permissions
+### CI permissions
 
 Do not add `--permission-mode bypassPermissions`. The command's `allowed-tools` list covers every
 call the review makes, subagents included, and in `-p` mode any other call is denied without a
@@ -118,23 +184,31 @@ Claude Code 2.1.280.
 ### Incremental reviews
 
 Each summary note ends with `<!-- claude-review: <sha> -->`. The next run finds the newest such
-marker written by the same GitLab account and reviews only the commits after it. A marker written
-by anyone else is ignored, so a quoted or pasted marker cannot steer or silence the reviewer.
+marker written by the same GitLab account, or by one listed in `CLAUDE_REVIEW_TRUSTED_AUTHORS`,
+and reviews only the commits after it. A marker written by anyone else is ignored, so a quoted or
+pasted marker cannot steer or silence the reviewer.
 
 The run falls back to a full review from the merge base when the marker is no longer an ancestor
 of the head (after a force-push) or names a commit the clone does not have.
 
 ## Scripts
 
-The command calls these scripts; each can also be run by hand inside a CI job.
+The command calls these scripts; each can also be run by hand, locally or in a CI job. A body or
+summary file of `-` reads stdin.
 
 | Script | Does | Exit codes |
 |---|---|---|
-| `review-range.sh <iid>` | Prints the `<from>..<to>` range to review. | 0 range printed, 3 nothing to review (reason on stderr), 1 failure |
+| `review-range.sh <iid> [<project>]` | Prints a JSON object: `project_id`, `iid`, `from`, `to`, `range`, `title`, `description`, `web_url`. | 0 printed, 3 nothing to review (reason on stderr), 1 failure |
 | `claude-md-files.sh <from>..<to>` | Prints the CLAUDE.md files that govern the changed files, as they exist in `<to>`. | 0, 1 failure |
-| `post-inline-comment.sh <iid> <path> <line> <body-file>` | Posts one inline discussion on `<line>` of the reviewed head; a body file of `-` reads stdin. Falls back to a plain note when GitLab rejects the position. | 0 posted by either route, 1 not posted at all |
+| `post-inline-comment.sh <project_id> <iid> <to> <path> <line> <body-file>` | Posts one inline discussion on `<line>` of `<to>`. Falls back to a plain note when GitLab rejects the position. | 0 posted by either route, 1 not posted at all |
+| `post-summary-note.sh <project_id> <iid> <to> <summary-file>` | Posts the summary note, adding the heading and the marker for `<to>`. | 0 posted, 1 failure |
 
 ## Troubleshooting
+
+### `run the review from a clone of project N`
+
+The review needs the merge request's commits. Run it from a clone of that project; if the clone's
+GitLab remote is not `origin`, set `CLAUDE_REVIEW_REMOTE`.
 
 ### No comment appears on the merge request
 
@@ -173,8 +247,8 @@ version and marks them outdated once the lines change. The next run reviews the 
 
 ### `could not post the finding at all`
 
-The token cannot write to the merge request. Check that `GITLAB_TOKEN` has the `api` scope and
-at least Reporter access to the project.
+The token cannot write to the merge request. Check that the token (`GITLAB_TOKEN` in CI, the one
+`glab auth login` stored locally) has the `api` scope and at least Reporter access to the project.
 
 ## Tests
 
