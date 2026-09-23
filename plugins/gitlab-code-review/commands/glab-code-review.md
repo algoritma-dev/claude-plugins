@@ -8,6 +8,7 @@ Provide a code review for the given merge request.
 **Agent assumptions (applies to all agents and subagents):**
 - All tools are functional and will work without error. Do not test tools or make exploratory calls. Make sure this is clear to every subagent that is launched.
 - Only call a tool if it is required to complete the task. Every tool call should have a clear purpose.
+- Do not invoke skills or slash commands, this one included; everything the review needs is in this file.
 - Run every command exactly as this file shows it, from the repository root: no `git -C`, no `cd`, nothing chained or piped onto it (`; echo $?`, `| cat -n`). Only the listed command prefixes are permitted and anything else is denied; the Bash tool already reports each exit code. Make sure this is clear to every subagent that is launched.
 
 To do this, follow these steps precisely:
@@ -82,7 +83,19 @@ Note: Still review Claude generated MRs.
 
    In addition to the above, each subagent should be told the MR title and description. This will help provide context regarding the author's intent.
 
-4. For each issue found in the previous step by agents 1, 2, 3 and 4, launch parallel subagents to validate the issue. These subagents should get the MR title and description along with a description of the issue. The agent's job is to review the issue to validate that the stated issue is truly an issue with high confidence. For example, if an issue such as "variable is not defined" was flagged, the subagent's job would be to validate that is actually true in the code. Another example would be CLAUDE.md issues. The agent should validate that the CLAUDE.md rule that was violated is scoped for this file and is actually violated. Use Opus subagents for bugs and logic issues, and sonnet agents for CLAUDE.md violations.
+4. Validate the issues found in the previous step by agents 1, 2, 3 and 4.
+
+   First merge duplicates yourself: agents 1 and 2 audit the same rules, and agents 3 and 4 often
+   report the same bug. Two issues are duplicates when they are about the same problem at the
+   same location; keep one, with the clearer description.
+
+   Then group the remaining issues by file and by kind, and launch one validation subagent per
+   group, all in parallel: Opus for bugs and logic issues, sonnet for CLAUDE.md violations. Each
+   subagent gets the MR title and description and the issues of its group, and judges every issue
+   on its own, returning a verdict per issue. Its job is to confirm with high confidence that the
+   stated issue is truly an issue. For example, if an issue such as "variable is not defined" was
+   flagged, the subagent checks that it is actually true in the code. For a CLAUDE.md issue, it
+   checks that the rule is scoped to this file and is actually violated.
 
 5. Filter out any issues that were not validated in step 4. This step will give us our list of high signal issues for our review.
 
