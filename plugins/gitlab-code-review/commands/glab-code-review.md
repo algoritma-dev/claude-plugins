@@ -1,13 +1,23 @@
 ---
-allowed-tools: Bash(glab mr view:*), Bash(glab mr diff:*), Bash(glab mr list:*), Bash(glab mr note:*), Bash(glab issue list:*), Bash(glab api:*), Bash(git diff:*), Bash(git log:*), Bash(git show:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/review-range.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/post-inline-comment.sh:*)
-description: Code review a merge request
+allowed-tools: Bash(git diff:*), Bash(git log:*), Bash(git show:*), Bash(git grep:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/review-range.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/claude-md-files.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/post-inline-comment.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/post-summary-note.sh:*)
+description: Review a GitLab merge request and post the findings on it as inline comments. Use when asked to review merge request N, optionally of project P (ID or path), from a developer's machine or in GitLab CI.
+argument-hint: <merge-request-iid> [<project-id-or-path>]
 ---
 
-Provide a code review for the given merge request.
+Provide a code review for the given merge request, and post it on the merge request.
+
+The request: $ARGUMENTS
+
+Take the merge request IID from the request, and the project if the request names one: a numeric
+ID such as `1234` or a path such as `group/app`. Without a project, the scripts use the CI job's
+project, or on a developer's machine the project of the clone the session runs in.
 
 **Agent assumptions (applies to all agents and subagents):**
 - All tools are functional and will work without error. Do not test tools or make exploratory calls. Make sure this is clear to every subagent that is launched.
 - Only call a tool if it is required to complete the task. Every tool call should have a clear purpose.
+- Do not invoke skills or slash commands, this one included; everything the review needs is in this file.
+- Run every command exactly as this file shows it, from the repository root: no `git -C`, no `cd`, nothing chained or piped onto it (`; echo $?`, `| cat -n`). Only the listed command prefixes are permitted and anything else is denied; the Bash tool already reports each exit code. Make sure this is clear to every subagent that is launched.
+- The working tree is not the merge request's code: on a developer's machine it is whatever branch is checked out, and in a merged results pipeline it is a merge with the target branch. Read every file of the project at the reviewed head with `git show <to>:<path>`, list files with `git show <to>:<dir>/`, and search with `git grep <pattern> <to> -- <path>`. Take every line number from there. Only `vendor/` and `node_modules/`, which are installed rather than committed, are read from the working tree. Make sure this is clear to every subagent that is launched.
 
 To do this, follow these steps precisely:
 
@@ -16,47 +26,54 @@ To do this, follow these steps precisely:
    Run the range resolver:
 
    ```bash
-   ${CLAUDE_PLUGIN_ROOT}/scripts/review-range.sh <MR>
+   ${CLAUDE_PLUGIN_ROOT}/scripts/review-range.sh <MR> [<project>]
    ```
 
-   - Exit code 3: there are no new commits since the last review. Stop. Post nothing.
-   - Exit code 0: the printed `<from>..<to>` range is what you review. Everything outside it has
-     already been reviewed and must not be commented on again.
-   - Any other exit code: stop and report the failure.
+   - Exit code 3: there is nothing to review. The merge request is closed, merged or a draft, or
+     has no new commits since the last review; stderr says which. Stop. Post nothing.
+   - Exit code 0: it prints one JSON object. Keep `project_id`, `iid`, `from`, `to`, `title`,
+     `description` and `web_url`; below, `<project_id>`, `<MR>`, `<from>` and `<to>` stand for
+     these values. The range `<from>..<to>` is what you review. Everything outside it has already
+     been reviewed and must not be commented on again.
+   - Any other exit code: stop and report the failure. It usually says the session is not in a
+     clone of the project; say so to the user.
 
-   Then launch a haiku agent to check whether any of the following is true:
-    - The merge request is closed
-    - The merge request is a draft
-    - The merge request does not need code review (e.g. automated MR, trivial change that is
-      obviously correct)
+   Every subagent below receives the MR title and description, as context on the author's intent.
+   The project URL, for code links, is `web_url` with its trailing `/-/merge_requests/<MR>`
+   removed.
 
-   If any condition is true, stop and do not proceed. Do not stop merely because Claude has
-   commented before — that is the normal incremental case, and the range already excludes what
-   those comments covered.
+   Then run `git diff --stat <from>..<to>` yourself, without a subagent. Stop, and post nothing,
+   only when the merge request plainly does not need a code review, such as an automated dependency bump or a trivial change that is obviously
+   correct. Do not stop merely because Claude has commented before — that is the normal
+   incremental case, and the range already excludes what those comments covered.
 
 Note: Still review Claude generated MRs.
 
-2. Launch a haiku agent to return a list of file paths (not their contents) for all relevant CLAUDE.md files including:
-    - The root CLAUDE.md file, if it exists
-    - Any CLAUDE.md files in directories containing files modified by the merge request
+2. List the CLAUDE.md files that apply to the change:
 
-3. Launch a sonnet agent to view the merge request and return a summary of the changes.
+   ```bash
+   ${CLAUDE_PLUGIN_ROOT}/scripts/claude-md-files.sh <from>..<to>
+   ```
 
-   Read the diff with `git diff <from>..<to>` using the range from step 1, not `glab mr diff`,
-   which always returns the whole merge request. Read surrounding files freely: the repository is
-   checked out and the point of reviewing here rather than from the diff alone is that the code
-   around the change is available.
+   It prints the root CLAUDE.md and every CLAUDE.md in a directory containing a changed file or
+   in one of its parents, as they exist in `<to>`. Read them with `git show <to>:<path>`. An empty
+   list means there are no guidelines to check; agents 1 and 2 of step 3 are then skipped.
+
+3. Launch 4 agents in parallel to independently review the changes. Every agent reads the diff
+   with `git diff <from>..<to>` using the range from step 1. Except where agent 3's instructions
+   say otherwise, agents read surrounding code freely, at `<to>` as the assumptions above say: the
+   point of reviewing here rather than from the diff alone is that the code around the change is
+   available.
 
    `vendor/` is installed. Open it to understand what the changed code calls — a framework base
    class, an interface the change implements, the signature of a method it passes arguments to.
    Never review it: nothing under `vendor/` is this team's code, and a finding there is always a
    false positive. The same goes for `node_modules/` when present.
 
-4. Launch 4 agents in parallel to independently review the changes. Every agent reads the diff
-   with `git diff <from>..<to>` using the range from step 1, never `glab mr diff`. Each agent should return the list of issues, where each issue includes a description and the reason it was flagged (e.g. "CLAUDE.md adherence", "bug"). The agents should do the following:
+   Each agent should return the list of issues, where each issue includes a description and the reason it was flagged (e.g. "CLAUDE.md adherence", "bug"). The agents should do the following:
 
    Agents 1 + 2: CLAUDE.md compliance sonnet agents
-   Audit changes for CLAUDE.md compliance in parallel. Note: When evaluating CLAUDE.md compliance for a file, you should only consider CLAUDE.md files that share a file path with the file or parents.
+   Give both the list of CLAUDE.md paths from step 2. Audit changes for CLAUDE.md compliance in parallel. Note: When evaluating CLAUDE.md compliance for a file, you should only consider CLAUDE.md files that share a file path with the file or parents.
 
    Agent 3: Opus bug agent (parallel subagent with agent 4)
    Scan for obvious bugs. Focus only on the diff itself without reading extra context. Flag only significant bugs; ignore nitpicks and likely false positives. Do not flag issues that you cannot validate without looking at context outside of the git diff.
@@ -78,23 +95,40 @@ Note: Still review Claude generated MRs.
 
    In addition to the above, each subagent should be told the MR title and description. This will help provide context regarding the author's intent.
 
-5. For each issue found in the previous step by agents 3 and 4, launch parallel subagents to validate the issue. These subagents should get the MR title and description along with a description of the issue. The agent's job is to review the issue to validate that the stated issue is truly an issue with high confidence. For example, if an issue such as "variable is not defined" was flagged, the subagent's job would be to validate that is actually true in the code. Another example would be CLAUDE.md issues. The agent should validate that the CLAUDE.md rule that was violated is scoped for this file and is actually violated. Use Opus subagents for bugs and logic issues, and sonnet agents for CLAUDE.md violations.
+4. Validate the issues found in the previous step by agents 1, 2, 3 and 4.
 
-6. Filter out any issues that were not validated in step 5. This step will give us our list of high signal issues for our review.
+   First merge duplicates yourself: agents 1 and 2 audit the same rules, and agents 3 and 4 often
+   report the same bug. Two issues are duplicates when they are about the same problem at the
+   same location; keep one, with the clearer description.
 
-7. If issues were found, go on to step 8 to post inline comments. If NO issues were found, skip
-   to step 10: the summary note is posted either way.
+   Then group the remaining issues by file and by kind, and launch one validation subagent per
+   group, all in parallel: Opus for bugs and logic issues, sonnet for CLAUDE.md violations. Each
+   subagent gets the MR title and description and the issues of its group, and judges every issue
+   on its own, returning a verdict per issue. Its job is to confirm with high confidence that the
+   stated issue is truly an issue. For example, if an issue such as "variable is not defined" was
+   flagged, the subagent checks that it is actually true in the code. For a CLAUDE.md issue, it
+   checks that the rule is scoped to this file and is actually violated.
 
-8. Create a list of all comments that you plan on leaving. This is only for you to make sure you are comfortable with the comments. Do not post this list anywhere.
+5. Filter out any issues that were not validated in step 4. This step will give us our list of high signal issues for our review.
 
-9. Post one inline comment per validated issue. Write the comment body to a temporary file and
-   post it:
+6. If issues were found, go on to step 7 to post inline comments. If NO issues were found, skip
+   to step 9: the summary note is posted either way.
+
+7. Create a list of all comments that you plan on leaving. This is only for you to make sure you are comfortable with the comments. Do not post this list anywhere.
+
+8. Post one inline comment per validated issue. Pass the comment body on stdin with a quoted
+   here-doc, so nothing in it is expanded by the shell and no temporary file is needed:
 
    ```bash
-   ${CLAUDE_PLUGIN_ROOT}/scripts/post-inline-comment.sh <MR> <path> <line> <body-file>
+   ${CLAUDE_PLUGIN_ROOT}/scripts/post-inline-comment.sh <project_id> <MR> <to> <path> <line> - <<'CLAUDE_REVIEW_EOF'
+   <comment body>
+   CLAUDE_REVIEW_EOF
    ```
 
-   The script resolves the diff refs itself; do not assemble the position by hand. A position
+   `<line>` is the line number in `<to>`, taken from `git diff` or `git show <to>:<path>`, never
+   from the working tree.
+
+   The script works out the position itself; do not assemble it by hand. A position
    GitLab cannot resolve falls back to a plain note automatically, and a non-zero exit means the
    finding reached the merge request by neither route — report that rather than continuing
    silently.
@@ -107,22 +141,19 @@ Note: Still review Claude generated MRs.
 
    **IMPORTANT: Only post ONE comment per unique issue. Do not post duplicate comments.**
 
-10. Post exactly one summary note recording the reviewed head SHA. The next run reads that SHA to
+9. Post exactly one summary note recording the reviewed head SHA. The next run reads that SHA to
     work out what is new, so this note is mandatory on every successful review, whether or not
     issues were found:
 
     ```bash
-    glab mr note <MR> --message "## Code review
-
+    ${CLAUDE_PLUGIN_ROOT}/scripts/post-summary-note.sh <project_id> <MR> <to> - <<'CLAUDE_REVIEW_EOF'
     <one line: 'No issues found. Checked for bugs and CLAUDE.md compliance.' or 'N issue(s) commented inline.'>
-
-    <!-- claude-review: <to-sha-from-step-1> -->"
+    CLAUDE_REVIEW_EOF
     ```
 
-    The `<to-sha>` is the right-hand side of the range from step 1 — the full 40-character SHA,
-    never an abbreviation. The marker must be the last line of the note.
+    Pass only that line. The script adds the heading and the marker recording `<to>`.
 
-Use this list when evaluating issues in Steps 4 and 5 (these are false positives, do NOT flag):
+Use this list when evaluating issues in Steps 3 and 4 (these are false positives, do NOT flag):
 
 - Anything under `vendor/` or `node_modules/` — third-party code, never this team's
 - Pre-existing issues
@@ -134,12 +165,13 @@ Use this list when evaluating issues in Steps 4 and 5 (these are false positives
 
 Notes:
 
-- Use glab CLI to interact with GitLab (e.g., `glab mr view`). Do not use web fetch.
+- Reach GitLab only through the scripts above. Do not use web fetch.
 - Create a todo list before starting.
+- When you finish, tell the user in one or two lines what was posted, with the merge request's `web_url`.
 - You must cite and link each issue in inline comments (e.g., if referring to a CLAUDE.md, include a link to it).
-- When linking to code in inline comments, follow the following format precisely, otherwise the Markdown preview won't render correctly: https://gitlab.com/group/project/-/blob/c21d3c10bc8e898b7ac1a2d745bdc9bc4e423afe/package.json#L10-15
+- When linking to code in inline comments, start from the project URL kept in step 1, which is right for self-hosted GitLab too, and follow this format precisely, otherwise the Markdown preview won't render correctly: <project-url>/-/blob/c21d3c10bc8e898b7ac1a2d745bdc9bc4e423afe/package.json#L10-15
     - Requires full git sha
-    - You must provide the full sha. Commands like `https://gitlab.com/owner/repo/-/blob/$(git rev-parse HEAD)/foo/bar` will not work, since your comment will be directly rendered in Markdown.
+    - You must provide the full sha. Commands like `<project-url>/-/blob/$(git rev-parse HEAD)/foo/bar` will not work, since your comment will be directly rendered in Markdown.
     - Repo name must match the repo you're code reviewing
     - # sign after the file name
     - Line range format is L[start]-[end] (no L prefix on the end)

@@ -1,0 +1,30 @@
+name: gitlab-code-review
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "plugins/gitlab-code-review/**"
+      - ".github/workflows/gitlab-code-review.yml"
+  pull_request:
+    paths:
+      - "plugins/gitlab-code-review/**"
+      - ".github/workflows/gitlab-code-review.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugins/gitlab-code-review
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        # SC1007 flags the CDPATH= idiom the test suites use on purpose.
+        run: shellcheck -S warning -e SC1007 scripts/*.sh tests/*.sh tests/stub-glab
+      - name: tests
+        # sh is dash on Ubuntu, which keeps the scripts POSIX.
+        run: sh tests/run-tests.sh
