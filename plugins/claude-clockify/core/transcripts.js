@@ -47,7 +47,7 @@ function promptText(line) {
   return null;
 }
 
-function importFile(db, file) {
+function importFile(db, file, from, to) {
   let inserted = 0;
   let skipped = 0;
   let lastCwd = null;
@@ -74,6 +74,7 @@ function importFile(db, file) {
         continue;
       }
       if (typeof line.cwd === 'string' && line.cwd) lastCwd = line.cwd;
+      if (ts < from || ts > to) continue; // outside the requested period
       const cwd = lastCwd;
       if (!cwd) {
         skipped++;
@@ -106,9 +107,10 @@ function importFile(db, file) {
 /**
  * Backfill the events table from Claude Code transcripts (rootDir/<project>/*.jsonl).
  * Idempotent: INSERT OR IGNORE on (sessionId, ts, type).
+ * `from` / `to` (epoch ms, inclusive) limit the imported events to a period; default: everything.
  * @returns {{files: number, inserted: number, skipped: number}}
  */
-export function importTranscripts(db, rootDir = defaultProjectsDir()) {
+export function importTranscripts(db, rootDir = defaultProjectsDir(), { from = -Infinity, to = Infinity } = {}) {
   const result = { files: 0, inserted: 0, skipped: 0 };
   let projects;
   try {
@@ -127,7 +129,10 @@ export function importTranscripts(db, rootDir = defaultProjectsDir()) {
     for (const f of entries) {
       if (!f.isFile() || !f.name.endsWith('.jsonl')) continue;
       try {
-        const r = importFile(db, path.join(rootDir, p.name, f.name));
+        const file = path.join(rootDir, p.name, f.name);
+        // a file last written before the period cannot hold events inside it
+        if (from > -Infinity && fs.statSync(file).mtimeMs < from) continue;
+        const r = importFile(db, file, from, to);
         result.files++;
         result.inserted += r.inserted;
         result.skipped += r.skipped;

@@ -99,10 +99,10 @@ export function createClient({ token, baseUrl, timeoutMs = 15000 }) {
   const MAX_PAGES = 50;
 
   /** Fetches every page so large projects get their full list in a single dashboard request. */
-  async function list(path) {
+  async function list(path, filter = '') {
     const out = [];
     for (let page = 1; page <= MAX_PAGES; page++) {
-      const r = await request('GET', `${path}?page-size=${PAGE_SIZE}${page > 1 ? `&page=${page}` : ''}`);
+      const r = await request('GET', `${path}?page-size=${PAGE_SIZE}${filter}${page > 1 ? `&page=${page}` : ''}`);
       if (!Array.isArray(r)) throw unexpected(200);
       out.push(...r);
       if (r.length < PAGE_SIZE) break;
@@ -120,8 +120,8 @@ export function createClient({ token, baseUrl, timeoutMs = 15000 }) {
       if (!isObj(u) || typeof u.id !== 'string') throw unexpected(200);
       return { id: u.id, defaultWorkspace: u.defaultWorkspace };
     },
-    listProjects: (w) => list(`${ws(w)}/projects`),
-    listTasks: (w, projectId) => list(`${ws(w)}/projects/${encodeURIComponent(projectId)}/tasks`),
+    listProjects: (w) => list(`${ws(w)}/projects`, '&archived=false'),
+    listTasks: (w, projectId) => list(`${ws(w)}/projects/${encodeURIComponent(projectId)}/tasks`, '&is-active=true'),
     listTags: (w) => list(`${ws(w)}/tags`),
     createEntry: async (w, e) => idOf(await request('POST', `${ws(w)}/time-entries`, entryBody(e))),
     updateEntry: async (w, id, e) =>

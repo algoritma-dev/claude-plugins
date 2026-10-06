@@ -219,7 +219,9 @@ details.tags summary {
   cursor: pointer; padding: 5px 9px; min-height: 32px; border: 1px solid var(--border); border-radius: var(--radius);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.tag-options { display: flex; flex-direction: column; gap: 2px; padding: 4px 2px; }
+.tag-search { width: 100%; margin-top: 6px; min-width: 150px; }
+.tag-none { margin: 4px 2px; font-size: 12px; }
+.tag-options { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding: 4px 2px; }
 .tag-opt { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
 
 /* ---------- mappings ---------- */
@@ -227,6 +229,7 @@ table.mappings { min-width: 760px; }
 .cwd { overflow-wrap: anywhere; font-size: 12px; }
 .cwd-input { width: 100%; min-width: 200px; }
 .mappings td:last-child { white-space: nowrap; }
+.mappings td:last-child button + button { margin-left: 6px; }
 .mappings td:last-child .msg { margin-left: 8px; }
 
 /* ---------- settings ---------- */

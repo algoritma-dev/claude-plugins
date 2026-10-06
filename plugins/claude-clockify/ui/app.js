@@ -449,8 +449,29 @@
   function createTagPicker(label, onChange) {
     const summary = h('summary', {}, '');
     const box = h('div', { class: 'tag-options', role: 'group', 'aria-label': label });
-    const el = h('details', { class: 'tags' }, summary, box);
+    const search = h('input', { type: 'text', class: 'tag-search', placeholder: 'Search tags…', autocomplete: 'off', 'aria-label': `Search ${label}` });
+    const none = h('p', { class: 'muted tag-none', hidden: true }, 'No results');
+    const el = h('details', { class: 'tags' }, summary, search, box, none);
     let sig = null;
+    function applyFilter() {
+      const q = norm(search.value.trim());
+      let shown = 0;
+      for (const l of box.querySelectorAll('.tag-opt')) {
+        const hit = !q || norm(l.textContent).includes(q);
+        l.hidden = !hit;
+        if (hit) shown++;
+      }
+      none.hidden = !q || shown > 0 || !box.querySelector('.tag-opt');
+    }
+    search.addEventListener('input', applyFilter);
+    search.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') ev.preventDefault();
+      else if (ev.key === 'Escape' && search.value) { ev.stopPropagation(); search.value = ''; applyFilter(); }
+    });
+    el.addEventListener('toggle', () => {
+      if (el.open) search.focus();
+      else { search.value = ''; applyFilter(); }
+    });
     let current = [];
     function selected() {
       return [...box.querySelectorAll('input[type=checkbox]')].filter((c) => c.checked).map((c) => c.value);
@@ -474,6 +495,7 @@
             h('input', { type: 'checkbox', value: t.id, disabled }), ` ${t.name}`))
             : [h('span', { class: 'muted' }, state.tags ? 'no tags available' : 'tags not loaded')]));
           sig = newSig;
+          applyFilter();
         }
         if (!focused) {
           for (const c of box.querySelectorAll('input[type=checkbox]')) c.checked = (ids ?? []).includes(c.value);
@@ -1008,8 +1030,9 @@
     const tags = createTagPicker(`Tags, ${label}`, (ids) => { r.tagIds = ids; });
     const save = h('button', { type: 'button', class: 'primary' }, isNew ? 'Add' : 'Save');
     const msg = h('span', { class: 'msg', role: 'status', 'aria-live': 'polite' });
+    const remove = isNew ? null : h('button', { type: 'button', class: 'delete', title: 'Remove this mapping' }, 'Remove');
     r.tr = h('tr', { class: isNew ? 'new-mapping' : '' },
-      h('td', {}, cwdCell), h('td', {}, project.wrap), h('td', {}, task.wrap), h('td', {}, tags.el), h('td', {}, save, msg));
+      h('td', {}, cwdCell), h('td', {}, project.wrap), h('td', {}, task.wrap), h('td', {}, tags.el), h('td', {}, save, remove, msg));
     r.render = () => {
       fillSelect(project, state.projects, r.projectId, state.projects ? '— choose a project —' : '— projects not loaded —');
       const to = taskOptions(r.projectId);
@@ -1041,6 +1064,21 @@
         save.disabled = false;
       }
       return undefined;
+    });
+    remove?.addEventListener('click', async () => {
+      // eslint-disable-next-line no-alert
+      if (!window.confirm(`Remove the mapping for ${m.cwd}? Existing entries keep their values.`)) return;
+      remove.disabled = true;
+      save.disabled = true;
+      try {
+        const list = await api('DELETE', '/api/mappings', { cwd: m.cwd });
+        state.mappings = Array.isArray(list) ? list : state.mappings;
+        renderMappings(true);
+      } catch (err) {
+        remove.disabled = false;
+        save.disabled = false;
+        setMsg(msg, 'error', `Not removed: ${errText(err)}`);
+      }
     });
     r.render();
     return r;
@@ -1128,13 +1166,34 @@
     putSettings({ clockifyToken: '' }, 'Token removed.');
   }
 
+  /** Period selected next to the import button, as epoch-ms bounds in local time. */
+  function importRange() {
+    const kind = $('import-period').value;
+    const now = new Date();
+    const dayStart = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const dayEnd = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime() - 1;
+    if (kind === 'today') return { body: { from: dayStart(now), to: dayEnd(now) } };
+    if (kind === '7d') return { body: { from: dayStart(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6)), to: dayEnd(now) } };
+    if (kind === 'range') {
+      const parse = (v) => (v ? new Date(`${v}T00:00:00`) : null);
+      const f = parse($('import-from').value);
+      const t = parse($('import-to').value);
+      if (!f && !t) return { error: 'Choose at least one date.' };
+      if (f && t && f > t) return { error: '"From" must not be after "To".' };
+      return { body: { ...(f && { from: dayStart(f) }), ...(t && { to: dayEnd(t) }) } };
+    }
+    return { body: undefined };
+  }
+
   async function onImport() {
     const btn = $('btn-import');
     const msg = $('tools-msg');
+    const range = importRange();
+    if (range.error) return setMsg(msg, 'error', range.error);
     btn.disabled = true;
     setMsg(msg, 'info', 'Importing…');
     try {
-      const r = await api('POST', '/api/import');
+      const r = await api('POST', '/api/import', range.body);
       setMsg(msg, 'ok', `Import complete: ${r?.files ?? 0} files read, ${r?.inserted ?? 0} new events, ${r?.skipped ?? 0} invalid lines skipped.`);
       await loadEntries();
     } catch (err) {
@@ -1229,6 +1288,11 @@
     $('settings-form').addEventListener('submit', onSettingsSubmit);
     $('s-token-remove').addEventListener('click', onRemoveToken);
     $('btn-import').addEventListener('click', onImport);
+    $('import-period').addEventListener('change', () => {
+      const custom = $('import-period').value === 'range';
+      $('import-from-wrap').hidden = !custom;
+      $('import-to-wrap').hidden = !custom;
+    });
     $('btn-refresh-lists').addEventListener('click', onRefreshLists);
 
     if (!/^[A-Za-z0-9+/=_-]{32,}$/.test(TOKEN)) {

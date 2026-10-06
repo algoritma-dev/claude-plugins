@@ -151,6 +151,16 @@
       <section class="card" aria-labelledby="tools-title">
         <h2 id="tools-title">Tools</h2>
         <div class="field-row">
+          <label>Import period
+            <select id="import-period">
+              <option value="all">all</option>
+              <option value="7d">last 7 days</option>
+              <option value="today">today</option>
+              <option value="range">custom</option>
+            </select>
+          </label>
+          <label id="import-from-wrap" hidden>From <input type="date" id="import-from"></label>
+          <label id="import-to-wrap" hidden>To <input type="date" id="import-to"></label>
           <button type="button" id="btn-import">Import transcripts</button>
           <button type="button" id="btn-refresh-lists">Refresh Clockify lists</button>
           <span id="tools-msg" class="msg" role="status" aria-live="polite"></span>

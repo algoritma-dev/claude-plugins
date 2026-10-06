@@ -71,3 +71,15 @@ test('missing rootDir returns zeros', () => {
   const db = openDb(':memory:');
   assert.deepEqual(importTranscripts(db, '/nonexistent/clockify-xyz'), { files: 0, inserted: 0, skipped: 0 });
 });
+
+test('from/to limit the import to a period (inclusive)', () => {
+  const db = openDb(':memory:');
+  importTranscripts(db, FIXTURES, { from: T('2026-01-01T10:00:30.000Z'), to: T('2026-01-01T11:00:00.000Z') });
+  assert.deepEqual(listEvents(db).map((e) => [e.type, e.text]), [
+    ['SessionStart', null],
+    ['UserPromptSubmit', 'second prompt'],
+  ]);
+  const none = openDb(':memory:');
+  importTranscripts(none, FIXTURES, { from: T('2027-01-01T00:00:00.000Z') });
+  assert.equal(listEvents(none).length, 0);
+});

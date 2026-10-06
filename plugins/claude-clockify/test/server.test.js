@@ -817,3 +817,25 @@ test('a deleted entry cannot be patched or sent, and a delete during a send is b
   assert.equal(extra.json.error.kind, 'busy');
   assert.equal(entryOf(db, K.s1).status, 'sent');
 });
+
+test('POST /api/import validates the optional period', async (t) => {
+  const { srv } = await setup(t);
+  const bad1 = await request(srv, 'POST', '/api/import', { body: { from: 'x' } });
+  assert.equal(bad1.status, 400);
+  const bad2 = await request(srv, 'POST', '/api/import', { body: { from: 5, to: 1 } });
+  assert.equal(bad2.status, 400);
+  const bad3 = await request(srv, 'POST', '/api/import', { body: { foo: 1 } });
+  assert.equal(bad3.status, 400);
+  const ok = await request(srv, 'POST', '/api/import', { body: { from: 0, to: Date.now() } });
+  assert.equal(ok.status, 200);
+});
+
+test('DELETE /api/mappings removes a mapping; unknown or malformed -> 404 / 400', async (t) => {
+  const { srv } = await setup(t);
+  await request(srv, 'PUT', '/api/mappings', { body: { cwd: '/gone', projectId: 'p1' } });
+  assert.equal((await request(srv, 'DELETE', '/api/mappings', { body: {} })).status, 400);
+  assert.equal((await request(srv, 'DELETE', '/api/mappings', { body: { cwd: '/nope' } })).status, 404);
+  const r = await request(srv, 'DELETE', '/api/mappings', { body: { cwd: '/gone' } });
+  assert.equal(r.status, 200);
+  assert.ok(!r.json.some((m) => m.cwd === '/gone'));
+});

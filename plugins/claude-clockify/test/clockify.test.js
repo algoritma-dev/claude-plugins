@@ -211,16 +211,18 @@ test('lists follow pagination until the last page', async () => {
   const tasks = await client.listTasks('ws1', 'big');
   assert.equal(tasks.length, 450);
   assert.equal(tasks[449].id, 'bt450');
-  assert.deepEqual(fake.requests.map((r) => r.query), ['?page-size=200', '?page-size=200&page=2', '?page-size=200&page=3']);
+  assert.deepEqual(fake.requests.map((r) => r.query), ['?page-size=200&is-active=true', '?page-size=200&is-active=true&page=2', '?page-size=200&is-active=true&page=3']);
 });
 
-test('list endpoints send ?page-size=200', async () => {
+test('list endpoints send page-size and hide archived projects / inactive tasks', async () => {
   fake.requests.length = 0;
   await client.listProjects('ws1');
   await client.listTasks('ws1', 'p1');
   await client.listTags('ws1');
   assert.equal(fake.requests.length, 3);
-  for (const r of fake.requests) assert.equal(r.query, '?page-size=200');
+  assert.deepEqual(fake.requests.map((r) => r.query), [
+    '?page-size=200&archived=false', '?page-size=200&is-active=true', '?page-size=200',
+  ]);
 });
 
 test('hung server -> network error after timeoutMs, token not leaked', async () => {

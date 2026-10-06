@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig, saveConfig } from '../core/config.js';
 import { openDb } from '../core/db.js';
 import {
-  reconcile, listEntries, updateEntry, dismissEntry, closeNow, recordSent, setMapping, listMappings,
+  reconcile, listEntries, updateEntry, dismissEntry, closeNow, recordSent, setMapping, deleteMapping, listMappings,
 } from '../core/entries.js';
 import { importTranscripts } from '../core/transcripts.js';
 import { createClient, ClockifyError, toClockifyEntry } from '../clockify/client.js';
@@ -448,9 +448,16 @@ export async function startServer(opts = {}) {
     }
 
     if (a === 'mappings' && b === undefined) {
-      allow(req, 'GET', 'PUT');
+      allow(req, 'GET', 'PUT', 'DELETE');
       if (req.method === 'GET') return sendJson(res, 200, listMappings(db));
       const body = await readJson(req);
+      if (req.method === 'DELETE') {
+        if (!isObj(body) || Object.keys(body).some((k) => k !== 'cwd')) throw bad('Body must be {cwd}');
+        if (!isNonEmptyStr(body.cwd)) throw bad('cwd is required');
+        if (!deleteMapping(db, body.cwd)) throw new HttpError(404, 'not_found', 'Mapping not found');
+        broadcast();
+        return sendJson(res, 200, listMappings(db));
+      }
       if (!isObj(body)) throw bad('Body must be an object');
       if (Object.keys(body).some((k) => !['cwd', 'projectId', 'taskId', 'tagIds'].includes(k))) {
         throw bad('Unknown field in body');
@@ -500,8 +507,15 @@ export async function startServer(opts = {}) {
 
     if (a === 'import' && b === undefined) {
       allow(req, 'POST');
-      req.resume();
-      const counts = importTranscripts(db, opts.projectsDir);
+      const body = (await readJson(req)) ?? {};
+      if (typeof body !== 'object' || body === null || Array.isArray(body)) throw bad('Body must be an object');
+      if (Object.keys(body).some((k) => !['from', 'to'].includes(k))) throw bad('Unknown field');
+      for (const k of ['from', 'to']) {
+        if (body[k] !== undefined && body[k] !== null && !Number.isFinite(body[k])) throw bad(`${k} must be a timestamp in ms`);
+      }
+      const range = { from: body.from ?? -Infinity, to: body.to ?? Infinity };
+      if (range.from > range.to) throw bad('from must not be after to');
+      const counts = importTranscripts(db, opts.projectsDir, range);
       reconcileAndPush();
       return sendJson(res, 200, counts);
     }

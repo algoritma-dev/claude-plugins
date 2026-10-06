@@ -304,6 +304,11 @@ export function getMapping(db, cwd) {
   return { ...row, tagIds: row.tagIds ? JSON.parse(row.tagIds) : [] };
 }
 
+/** Removes the folder mapping; existing entries keep their values. @returns {boolean} true when a mapping was removed */
+export function deleteMapping(db, cwd) {
+  return db.prepare('DELETE FROM mappings WHERE cwd = ?').run(cwd).changes > 0;
+}
+
 /** @returns {Array<{cwd: string, projectId: string|null, taskId: string|null, tagIds: string[]}>} ordered by cwd */
 export function listMappings(db) {
   return db.prepare('SELECT cwd, projectId, taskId, tagIds FROM mappings ORDER BY cwd').all()
