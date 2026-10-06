@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="light dark">
+  <meta name="session-token" content="{{SESSION_TOKEN}}">
+  <title>Claude Clockify</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1>Claude Clockify</h1>
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button type="button" role="tab" id="tab-entries" aria-controls="panel-entries" aria-selected="true">Entries</button>
+      <button type="button" role="tab" id="tab-mappings" aria-controls="panel-mappings" aria-selected="false" tabindex="-1">Mappings</button>
+      <button type="button" role="tab" id="tab-settings" aria-controls="panel-settings" aria-selected="false" tabindex="-1">Settings</button>
+    </nav>
+    <span id="conn-status" class="conn" role="status" aria-live="polite"></span>
+  </header>
+
+  <div id="proposed-banner" class="banner" role="status" aria-live="polite" hidden>
+    <span id="proposed-banner-text"></span>
+    <button type="button" id="proposed-banner-close" class="link">Close</button>
+  </div>
+
+  <div id="global-error" class="alert" role="alert" hidden>
+    <span id="global-error-text"></span>
+    <button type="button" id="global-error-retry">Retry</button>
+  </div>
+
+  <main>
+    <section id="panel-entries" role="tabpanel" aria-labelledby="tab-entries">
+      <section class="card now" aria-labelledby="now-title">
+        <h2 id="now-title">Now</h2>
+        <div id="now-list"></div>
+      </section>
+
+      <section class="card" aria-labelledby="entries-title">
+        <div class="section-head">
+          <h2 id="entries-title">Entries</h2>
+          <div class="filters">
+            <label>Period
+              <select id="f-period">
+                <option value="today">today</option>
+                <option value="7d" selected>last 7 days</option>
+                <option value="all">all</option>
+                <option value="range">from – to</option>
+              </select>
+            </label>
+            <label id="f-from-wrap" hidden>From <input type="date" id="f-from"></label>
+            <label id="f-to-wrap" hidden>To <input type="date" id="f-to"></label>
+            <label>Status
+              <select id="f-status">
+                <option value="">all</option>
+                <option value="in_progress">In progress</option>
+                <option value="proposed">Proposed</option>
+                <option value="edited">Edited</option>
+                <option value="sent">Sent</option>
+              </select>
+            </label>
+            <button type="button" id="send-selected" class="primary" disabled>Send selected</button>
+            <button type="button" id="delete-selected" class="delete" disabled>Delete selected</button>
+          </div>
+        </div>
+        <p id="send-msg" class="msg" role="status" aria-live="polite"></p>
+        <div id="lists-error" class="alert" role="alert" hidden>
+          <span id="lists-error-text"></span>
+          <button type="button" id="lists-error-retry">Retry</button>
+        </div>
+        <div class="table-wrap">
+          <table class="entries">
+            <thead>
+              <tr>
+                <th scope="col" class="c-sel"><input type="checkbox" id="select-all" aria-label="Select all visible entries"></th>
+                <th scope="col">Start</th>
+                <th scope="col">Hours</th>
+                <th scope="col">Project</th>
+                <th scope="col">Task</th>
+                <th scope="col">Tags</th>
+                <th scope="col">Description</th>
+                <th scope="col">Status</th>
+                <th scope="col">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="entries-body"></tbody>
+          </table>
+        </div>
+        <p id="entries-empty" class="muted" hidden>No entries match the selected filters.</p>
+      </section>
+    </section>
+
+    <section id="panel-mappings" role="tabpanel" aria-labelledby="tab-mappings" hidden>
+      <section class="card" aria-labelledby="map-title">
+        <h2 id="map-title">Folder → project mappings</h2>
+        <p class="muted">New entries of a folder take their project, task and tags from here.</p>
+        <div class="table-wrap">
+          <table class="mappings">
+            <thead>
+              <tr>
+                <th scope="col">Folder</th>
+                <th scope="col">Project</th>
+                <th scope="col">Task</th>
+                <th scope="col">Tags</th>
+                <th scope="col">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="mappings-body"></tbody>
+          </table>
+        </div>
+        <datalist id="cwd-suggestions"></datalist>
+      </section>
+    </section>
+
+    <section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" hidden>
+      <section class="card" aria-labelledby="set-title">
+        <h2 id="set-title">Settings</h2>
+        <form id="settings-form" class="settings" novalidate>
+          <label for="s-threshold">Pause threshold (minutes)</label>
+          <input type="number" id="s-threshold" min="1" step="1" required>
+
+          <label for="s-margin">Margin (minutes)</label>
+          <input type="number" id="s-margin" min="0" step="1" required>
+
+          <label for="s-workspace">Workspace ID</label>
+          <input type="text" id="s-workspace" autocomplete="off" placeholder="account default">
+
+          <label for="s-token">Clockify token</label>
+          <div class="field-row">
+            <input type="password" id="s-token" autocomplete="new-password" placeholder="leave empty to keep it unchanged" aria-describedby="s-token-state">
+            <span id="s-token-state" class="pill"></span>
+            <button type="button" id="s-token-remove">Remove token</button>
+          </div>
+
+          <label for="s-port">Port</label>
+          <div class="field-row">
+            <input type="number" id="s-port" min="1" max="65535" step="1" required aria-describedby="s-port-note">
+            <span id="s-port-note" class="muted">A port change takes effect at the next start.</span>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="primary">Save settings</button>
+            <span id="settings-msg" class="msg" role="status" aria-live="polite"></span>
+          </div>
+        </form>
+      </section>
+
+      <section class="card" aria-labelledby="tools-title">
+        <h2 id="tools-title">Tools</h2>
+        <div class="field-row">
+          <button type="button" id="btn-import">Import transcripts</button>
+          <button type="button" id="btn-refresh-lists">Refresh Clockify lists</button>
+          <span id="tools-msg" class="msg" role="status" aria-live="polite"></span>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <dialog id="send-dialog" aria-labelledby="send-dialog-title">
+    <h2 id="send-dialog-title">Confirm send to Clockify</h2>
+    <p id="send-dialog-summary"></p>
+    <ul id="send-dialog-list"></ul>
+    <div class="form-actions">
+      <button type="button" id="send-dialog-cancel">Cancel</button>
+      <button type="button" id="send-dialog-confirm" class="primary">Send</button>
+    </div>
+  </dialog>
+</body>
+</html>

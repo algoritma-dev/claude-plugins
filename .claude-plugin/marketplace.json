@@ -16,6 +16,16 @@
             }
         },
         {
+            "name": "claude-clockify",
+            "source": "./plugins/claude-clockify",
+            "description": "Tracks Claude Code work time and sends it to Clockify from a local dashboard",
+            "category": "productivity",
+            "homepage": "https://github.com/algoritma-dev/claude-plugins/tree/main/plugins/claude-clockify",
+            "author": {
+                "name": "Algoritma Team"
+            }
+        },
+        {
             "name": "superpowers",
             "source": {
                 "source": "url",

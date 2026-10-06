@@ -1,0 +1,9 @@
+{"type":"mode","mode":"normal"}
+{"type":"user","sessionId":"sess-a","timestamp":"2026-01-01T10:00:00.000Z","cwd":"/tmp/demo","isSidechain":false,"message":{"role":"user","content":"first prompt"}}
+{"type":"assistant","sessionId":"sess-a","timestamp":"2026-01-01T10:00:05.000Z","cwd":"/tmp/demo","isSidechain":false,"message":{"role":"assistant","content":[{"type":"text","text":"reply"}]}}
+{not valid json
+{"type":"user","sessionId":"sess-a","cwd":"/tmp/demo","message":{"role":"user","content":"no timestamp"}}
+{"type":"user","sessionId":"sess-a","timestamp":"2026-01-01T10:00:06.000Z","cwd":"/tmp/demo","isSidechain":false,"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"x","content":"out"}]}}
+{"type":"user","sessionId":"sess-a","timestamp":"2026-01-01T10:00:07.000Z","cwd":"/tmp/demo","isSidechain":true,"message":{"role":"user","content":"sidechain prompt"}}
+{"type":"user","sessionId":"sess-a","timestamp":"2026-01-01T10:00:08.000Z","cwd":"/tmp/demo","isMeta":true,"message":{"role":"user","content":"meta"}}
+{"type":"user","sessionId":"sess-a","timestamp":"2026-01-01T10:01:00.000Z","isSidechain":false,"message":{"role":"user","content":[{"type":"text","text":"second prompt"}]}}

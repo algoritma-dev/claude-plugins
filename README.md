@@ -3,6 +3,7 @@
 | Name                                                   | Description                                                                                             | Contents                         |
 |--------------------------------------------------------|---------------------------------------------------------------------------------------------------------|----------------------------------|
 | [gitlab-code-review](plugins/gitlab-code-review)       | Automated code review for pull requests using multiple specialized agents with confidence-based scoring | **Command:** `/glab-code-review` |
+| [claude-clockify](plugins/claude-clockify)             | Tracks Claude Code work time and sends it to Clockify, only on your click, from a local dashboard       | **Command:** `/clockify-dash`    |
 | [Caveman](https://github.com/JuliusBrussee/caveman)    | Token usage compression                                                                                 | **Command:** `/caveman help`     |
 | [Superpowers](https://github.com/obra/superpowers)     | Claude code with superpowers                                                                            | **Command:** `/superpower help`  |
 | [Claude-mem](https://github.com/thedotmack/claude-mem) | Persistent memory compression system built for Claude Code.                                             |                                  |
