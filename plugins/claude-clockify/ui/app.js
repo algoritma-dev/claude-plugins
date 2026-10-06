@@ -1213,8 +1213,94 @@
     btn.disabled = false;
   }
 
+  // ---------- Export ----------
+  const XSTATE = {
+    ready: ['pill-ok', 'Profile ready'],
+    missing: ['pill-warn', 'No profile yet'],
+    invalid: ['pill-warn', 'Profile invalid'],
+    template_missing: ['pill-warn', 'Template not found'],
+    template_changed: ['pill-warn', 'Template changed'],
+  };
+  const xState = { ready: false };
+
+  async function loadExport() {
+    try {
+      const st = await api('GET', '/api/export/status');
+      const [cls, label] = XSTATE[st.state] ?? ['pill-warn', st.state];
+      $('x-state').textContent = label;
+      $('x-state').className = `pill ${cls}`;
+      $('x-detail').textContent = st.state === 'ready'
+        ? `Sheet "${st.sheet}" of ${st.templatePath}`
+        : (st.message ?? st.templatePath ?? '');
+      xState.ready = st.state === 'ready';
+      $('x-setup').hidden = xState.ready;
+      $('x-controls').hidden = !xState.ready;
+      if (xState.ready && !$('x-month').value) $('x-month').value = st.month;
+    } catch (err) {
+      $('x-state').textContent = 'Unavailable';
+      $('x-state').className = 'pill pill-warn';
+      $('x-detail').textContent = `Could not load export status: ${errText(err)}. If you just updated the plugin, restart the dashboard.`;
+    }
+  }
+
+  async function onExportPreview() {
+    const month = $('x-month').value;
+    const msg = $('x-msg');
+    if (!month) return setMsg(msg, 'error', 'Choose a month.');
+    setMsg(msg, 'info', 'Reading Clockify…');
+    try {
+      const r = await api('POST', '/api/export/preview', { month });
+      $('x-head').replaceChildren(...r.columns.map((c) => h('th', { scope: 'col' }, c)));
+      $('x-body').replaceChildren(...r.preview.map((row) => h('tr', {}, ...row.map((v) => h('td', {}, v)))));
+      const more = r.rows > r.preview.length ? ` (first ${r.preview.length} shown)` : '';
+      $('x-summary').textContent = `${r.entries} entries -> ${r.rows} rows, ${r.totalHours.toFixed(2)} h${more}`;
+      $('x-result').hidden = false;
+      setMsg(msg, '', '');
+    } catch (err) {
+      setMsg(msg, 'error', `Preview failed: ${errText(err)}`);
+    }
+  }
+
+  async function onExportDownload() {
+    const month = $('x-month').value;
+    const msg = $('x-msg');
+    if (!month) return setMsg(msg, 'error', 'Choose a month.');
+    const btn = $('x-download');
+    btn.disabled = true;
+    setMsg(msg, 'info', 'Building the file…');
+    try {
+      let res;
+      try {
+        res = await fetch('/api/export/download', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Session-Token': TOKEN },
+          body: JSON.stringify({ month }),
+          cache: 'no-store',
+          credentials: 'same-origin',
+        });
+      } catch {
+        throw new ApiError('offline', 'fetch failed', 0);
+      }
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new ApiError(data?.error?.kind ?? 'other', data?.error?.message ?? `HTTP ${res.status}`, res.status);
+      }
+      const url = URL.createObjectURL(await res.blob());
+      const a = h('a', { href: url, download: `clockify-${month}.xlsx` });
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      setMsg(msg, 'ok', 'File downloaded.');
+    } catch (err) {
+      setMsg(msg, 'error', `Export failed: ${errText(err)}`);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   // ---------- tabs ----------
-  const TABS = ['entries', 'mappings', 'settings'];
+  const TABS = ['entries', 'mappings', 'export', 'settings'];
   function selectTab(name, focus) {
     for (const t of TABS) {
       const tab = $(`tab-${t}`);
@@ -1225,6 +1311,7 @@
       if (on && focus) tab.focus();
     }
     if (name === 'mappings') loadMappings();
+    if (name === 'export') loadExport();
     if (name === 'settings') loadSettings();
   }
 
@@ -1294,6 +1381,8 @@
       $('import-to-wrap').hidden = !custom;
     });
     $('btn-refresh-lists').addEventListener('click', onRefreshLists);
+    $('x-preview').addEventListener('click', onExportPreview);
+    $('x-download').addEventListener('click', onExportDownload);
 
     if (!/^[A-Za-z0-9+/=_-]{32,}$/.test(TOKEN)) {
       showGlobalError('Session token missing: open the dashboard from the local server.', null);

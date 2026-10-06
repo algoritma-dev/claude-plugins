@@ -25,6 +25,16 @@ Open the dashboard (`/clockify-dash`), go to **Settings** and paste the API key.
 4. **Folder -> project mapping.** Map each working folder to a Clockify project (with optional task and tags): new entries of that folder are created already filled in.
 5. **Review and send.** Edit minutes, task, project and description; **Close now** closes an entry that is still in progress; **Send** creates the entry on Clockify; **Resend** updates an entry that was already sent (no duplicates).
 
+## Excel export (`/clockify-export`)
+
+Exports the hours of a month, read from Clockify, into your own `.xlsx` template. No dependencies and no company-specific format in the plugin: the layout comes from your template.
+
+1. Run `/clockify-export 2026-10 /path/to/template.xlsx` (month defaults to the current one). Once the profile exists you can also use the **Export** tab of the dashboard: pick a month, **Preview**, **Download .xlsx**. The dashboard cannot create the profile (that needs Claude): it shows the profile state and tells you when the template changed.
+2. First time only: Claude reads the template (typically one sheet for the data and one with the rules to follow), writes an export **profile** (sheet, first row, column -> field mapping, optional grouping), shows a preview and asks you to confirm. The profile is stored in `~/.claude-clockify/export-profile.json` (permissions `600`), never in the repository.
+3. Next runs reuse the profile without involving the model. If the template file changes, the profile is invalidated and regenerated.
+
+Cell styles and formats are taken from the template cell at the first data row. Formulas are recalculated when the file is opened in Excel. Rows below the data area are not shifted. Only the `.xlsx` format is supported.
+
 ## How time is computed
 
 - A session's events are grouped into blocks: if at least **10 minutes** (the threshold) pass between two events, the block ends and a new one starts. `SessionEnd` and "Close now" always close the block.

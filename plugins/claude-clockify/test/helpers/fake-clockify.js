@@ -15,6 +15,19 @@ const TAGS = [
   { id: 'g2', name: 'feature' },
 ];
 
+const HISTORY = [
+  {
+    id: 'h1',
+    description: 'Done',
+    project: { id: 'p1', name: 'Alpha' },
+    task: { id: 't1', name: 'Development' },
+    tags: [{ id: 'g1', name: 'bug' }],
+    timeInterval: { start: '2026-10-01T08:00:00Z', end: '2026-10-01T09:00:00Z' },
+  },
+  { id: 'h2', description: 'Running', timeInterval: { start: '2026-10-01T10:00:00Z', end: null } },
+  { id: 'h3', timeInterval: { start: '2026-10-02T08:00:00Z', end: '2026-10-02T08:30:00Z' } },
+];
+
 export async function startFakeClockify() {
   const requests = [];
   let failStatus = null;
@@ -76,6 +89,11 @@ export async function startFakeClockify() {
       const m = req.method;
       if (m === 'GET' && p === '/api/v1/user') {
         return send(200, { id: 'u1', defaultWorkspace: 'ws1' });
+      }
+      if (m === 'GET' && /^\/api\/v1\/workspaces\/[^/]+\/user\/[^/]+\/time-entries$/.test(p)) {
+        const page = Number(url.searchParams.get('page') ?? 1);
+        const size = Number(url.searchParams.get('page-size') ?? 50);
+        return send(200, HISTORY.slice((page - 1) * size, page * size));
       }
       if (m === 'GET' && /^\/api\/v1\/workspaces\/[^/]+\/projects$/.test(p)) {
         return send(200, PROJECTS);

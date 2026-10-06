@@ -17,6 +17,7 @@
     <nav class="tabs" role="tablist" aria-label="Sections">
       <button type="button" role="tab" id="tab-entries" aria-controls="panel-entries" aria-selected="true">Entries</button>
       <button type="button" role="tab" id="tab-mappings" aria-controls="panel-mappings" aria-selected="false" tabindex="-1">Mappings</button>
+      <button type="button" role="tab" id="tab-export" aria-controls="panel-export" aria-selected="false" tabindex="-1">Export</button>
       <button type="button" role="tab" id="tab-settings" aria-controls="panel-settings" aria-selected="false" tabindex="-1">Settings</button>
     </nav>
     <span id="conn-status" class="conn" role="status" aria-live="polite"></span>
@@ -112,6 +113,31 @@
           </table>
         </div>
         <datalist id="cwd-suggestions"></datalist>
+      </section>
+    </section>
+
+    <section id="panel-export" role="tabpanel" aria-labelledby="tab-export" hidden>
+      <section class="card" aria-labelledby="export-title">
+        <h2 id="export-title">Excel export</h2>
+        <p class="muted">Fills your own .xlsx template with the hours of a month, read from Clockify. Nothing is changed on Clockify.</p>
+        <p><span id="x-state" class="pill"></span> <span id="x-detail" class="muted"></span></p>
+        <p id="x-setup" class="muted" hidden>Create or update the profile by running <code>/clockify-export</code> in Claude Code: it reads your template and its rules once and saves the layout.</p>
+        <div id="x-controls" class="field-row" hidden>
+          <label for="x-month">Month</label>
+          <input type="month" id="x-month">
+          <button type="button" id="x-preview">Preview</button>
+          <button type="button" id="x-download" class="primary">Download .xlsx</button>
+          <span id="x-msg" class="msg" role="status" aria-live="polite"></span>
+        </div>
+        <div id="x-result" hidden>
+          <p id="x-summary"></p>
+          <div class="table-wrap">
+            <table class="entries">
+              <thead><tr id="x-head"></tr></thead>
+              <tbody id="x-body"></tbody>
+            </table>
+          </div>
+        </div>
       </section>
     </section>
 

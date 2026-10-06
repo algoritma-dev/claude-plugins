@@ -11,11 +11,16 @@ import {
 import { importTranscripts } from '../core/transcripts.js';
 import { createClient, ClockifyError, toClockifyEntry } from '../clockify/client.js';
 import { checkRequest } from './security.js';
+import { fillTemplate, previewTable, currentMonth, profileColumns, rowCount } from '../core/export.js';
+import { loadProfileState, collectMonth } from '../core/export-service.js';
 
 const PKG_DIR = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const BODY_LIMIT = 1024 * 1024;
 const STATUSES = new Set(['in_progress', 'proposed', 'edited', 'sent', 'dismissed']);
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+const PREVIEW_ROWS = 50;
 const DESC_MAX = 500;
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -493,6 +498,69 @@ export async function startServer(opts = {}) {
         throw err;
       }
       return sendJson(res, 200, listCache.get(cacheName));
+    }
+
+    if (a === 'export' && b === 'status' && c === undefined) {
+      allow(req, 'GET');
+      const st = loadProfileState();
+      const out = { state: st.state, templatePath: st.templatePath ?? null, message: st.message ?? null };
+      if (st.state === 'ready') {
+        out.sheet = st.profile.sheet;
+        out.columns = profileColumns(st.profile);
+        out.month = currentMonth(new Date(now()));
+      }
+      return sendJson(res, 200, out);
+    }
+
+    if (a === 'export' && (b === 'preview' || b === 'download') && c === undefined) {
+      allow(req, 'POST');
+      const body = await readJson(req);
+      if (!isObj(body) || Object.keys(body).some((k) => k !== 'month') || !MONTH_RE.test(body.month ?? '')) {
+        throw bad('Body must be {month: "YYYY-MM"}');
+      }
+      const st = loadProfileState();
+      if (st.state !== 'ready') {
+        throw new HttpError(409, 'state', `Export profile not ready (${st.state}): run /clockify-export in Claude Code`);
+      }
+      let result;
+      try {
+        result = await collectMonth({
+          client: clockifyContext().client,
+          workspaceId: loadConfig().workspaceId,
+          month: body.month,
+          profile: st.profile,
+        });
+      } catch (err) {
+        if (err instanceof ClockifyError) {
+          return sendJson(res, err.kind === 'auth' ? 401 : 502, { error: clockifyErrorBody(err) });
+        }
+        throw err;
+      }
+      const { entries, records, totalHours } = result;
+      if (b === 'preview') {
+        return sendJson(res, 200, {
+          month: body.month,
+          entries: entries.length,
+          rows: rowCount(records),
+          totalHours: Math.round(totalHours * 100) / 100,
+          columns: profileColumns(st.profile),
+          preview: previewTable(records, st.profile, PREVIEW_ROWS),
+        });
+      }
+      if (rowCount(records) === 0) throw new HttpError(409, 'state', 'No entries in that month: nothing to export');
+      let file;
+      try {
+        file = fillTemplate(st.templateBuf, st.profile, records, body.month);
+      } catch (err) {
+        throw new HttpError(422, 'validation', `The template could not be filled: ${err.message}`);
+      }
+      res.writeHead(200, {
+        ...SECURITY_HEADERS,
+        'Content-Type': XLSX_MIME,
+        'Content-Disposition': `attachment; filename="clockify-${body.month}.xlsx"`,
+        'Content-Length': file.length,
+      });
+      return res.end(file);
     }
 
     if (a === 'settings' && b === undefined) {

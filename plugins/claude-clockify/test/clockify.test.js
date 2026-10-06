@@ -275,3 +275,24 @@ test('unexpected body shapes -> ClockifyError other', async () => {
     await assert.rejects(call, (err) => err instanceof ClockifyError && err.kind === 'other');
   }
 });
+
+test('listTimeEntries resolves names and skips running entries', async () => {
+  fake.requests.length = 0;
+  const list = await client.listTimeEntries('ws1', 'u1', '2026-10-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z');
+  assert.deepEqual(list, [
+    {
+      id: 'h1',
+      start: '2026-10-01T08:00:00Z',
+      end: '2026-10-01T09:00:00Z',
+      description: 'Done',
+      project: 'Alpha',
+      task: 'Development',
+      tags: ['bug'],
+    },
+    { id: 'h3', start: '2026-10-02T08:00:00Z', end: '2026-10-02T08:30:00Z', description: '', project: '', task: '', tags: [] },
+  ]);
+  const q = new URLSearchParams(fake.requests[0].query);
+  assert.equal(q.get('hydrated'), 'true');
+  assert.equal(q.get('start'), '2026-10-01T00:00:00.000Z');
+  assert.equal(q.get('end'), '2026-11-01T00:00:00.000Z');
+});

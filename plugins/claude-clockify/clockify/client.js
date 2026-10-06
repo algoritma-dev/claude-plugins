@@ -123,6 +123,29 @@ export function createClient({ token, baseUrl, timeoutMs = 15000 }) {
     listProjects: (w) => list(`${ws(w)}/projects`, '&archived=false'),
     listTasks: (w, projectId) => list(`${ws(w)}/projects/${encodeURIComponent(projectId)}/tasks`, '&is-active=true'),
     listTags: (w) => list(`${ws(w)}/tags`),
+    /** Finished time entries of a user in [startIso, endIso), with project, task and tag names resolved. */
+    listTimeEntries: async (w, userId, startIso, endIso) => {
+      const out = [];
+      const path = `${ws(w)}/user/${encodeURIComponent(userId)}/time-entries`;
+      const range = `&start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(endIso)}`;
+      for (let page = 1; page <= MAX_PAGES; page++) {
+        const r = await request('GET', `${path}?hydrated=true&page-size=${PAGE_SIZE}${range}${page > 1 ? `&page=${page}` : ''}`);
+        if (!Array.isArray(r)) throw unexpected(200);
+        out.push(...r);
+        if (r.length < PAGE_SIZE) break;
+      }
+      return out
+        .filter((e) => isObj(e) && isObj(e.timeInterval) && e.timeInterval.start && e.timeInterval.end)
+        .map((e) => ({
+          id: e.id,
+          start: e.timeInterval.start,
+          end: e.timeInterval.end,
+          description: e.description ?? '',
+          project: e.project?.name ?? '',
+          task: e.task?.name ?? '',
+          tags: Array.isArray(e.tags) ? e.tags.map((t) => t.name) : [],
+        }));
+    },
     createEntry: async (w, e) => idOf(await request('POST', `${ws(w)}/time-entries`, entryBody(e))),
     updateEntry: async (w, id, e) =>
       idOf(await request('PUT', `${ws(w)}/time-entries/${encodeURIComponent(id)}`, entryBody(e))),

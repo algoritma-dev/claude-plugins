@@ -52,6 +52,18 @@ async function main() {
   ev('dev-live', now - 2 * MIN, 'Stop', ALPHA);
   db.close();
 
+  // Export tab: a tiny template plus a saved profile, so the tab is "ready" out of the box.
+  const { makeTemplate } = await import('./make-template.js');
+  const { main: exportCli } = await import('../../export/cli.js');
+  fs.writeFileSync(path.join(home, 'template.xlsx'), makeTemplate());
+  fs.writeFileSync(path.join(home, 'profile.json'), JSON.stringify({
+    sheet: 'Hours',
+    startRow: 4,
+    columns: [{ col: 'A', field: 'date' }, { col: 'B', field: 'project' }, { col: 'C', field: 'hours' }],
+    removeSheets: ['Rules'],
+  }));
+  await exportCli(['save-profile', path.join(home, 'profile.json'), '--template', path.join(home, 'template.xlsx')], { log() {}, err: console.error });
+
   const port = process.env.PORT ? Number(process.env.PORT) : 4747;
   const srv = await startServer({
     port,
