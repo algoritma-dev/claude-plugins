@@ -42,8 +42,9 @@
         {
             "name": "claude-mem",
             "source": {
-                "source": "url",
-                "url": "https://github.com/thedotmack/claude-mem.git"
+                "source": "git-subdir",
+                "url": "https://github.com/thedotmack/claude-mem.git",
+                "path": "plugin"
             }
         }
     ]
