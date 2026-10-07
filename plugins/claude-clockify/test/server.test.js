@@ -416,12 +416,12 @@ test('PATCH entry -> edited, SSE receives entries event', async (t) => {
   });
   assert.equal(r.status, 200);
   assert.equal(r.json.status, 'edited');
-  assert.equal(r.json.minutes, 42);
+  assert.equal(r.json.minutes, 45);
   assert.equal(entryOf(db, K.s1).description, 'work');
 
   const ev = await sse.waitFor(2);
   assert.equal(ev.event, 'entries');
-  assert.equal(ev.data.find((e) => e.sessionId === 's1').minutes, 42);
+  assert.equal(ev.data.find((e) => e.sessionId === 's1').minutes, 45);
 });
 
 test('PATCH errors: in_progress 409, unknown field / bad type 400, unknown entry 404, bad JSON 400', async (t) => {
@@ -733,7 +733,7 @@ test('PATCH and close on an entry being sent -> 409 busy', async (t) => {
   assert.equal(extra.close.status, 409);
   assert.equal(extra.close.json.error.kind, 'busy');
   assert.equal(res.json.results[0].ok, true);
-  assert.equal(entryOf(db, K.s1).minutes, 7);
+  assert.equal(entryOf(db, K.s1).minutes, 15);
   const later = await request(srv, 'PATCH', `/api/entries/s1/${T0}`, { body: { minutes: 50 } });
   assert.equal(later.status, 200);
 });

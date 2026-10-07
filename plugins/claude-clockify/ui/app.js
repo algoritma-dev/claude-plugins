@@ -551,7 +551,7 @@
         setMsg(ctl.msg, 'error', 'Invalid hours: enter a number between 0.01 and 24.');
         return;
       }
-      queuePatch(ctl, { minutes: Math.round(v * 60 * 1000) / 1000 }, true);
+      queuePatch(ctl, { minutes: Math.max(15, Math.round(v * 4) * 15) }, true);
     });
     const hint = h('span', { class: 'hint' });
 

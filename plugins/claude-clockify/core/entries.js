@@ -1,6 +1,6 @@
 import { loadConfig } from './config.js';
 import { insertEvent } from './db.js';
-import { computeBlocks } from './blocks.js';
+import { computeBlocks, quarterHour } from './blocks.js';
 
 /** @typedef {'in_progress'|'proposed'|'edited'|'sent'|'dismissed'} EntryStatus */
 /**
@@ -155,13 +155,13 @@ export function reconcile(db, now, opts = {}) {
         const r = live[j++];
         matched.add(r);
         if (r.startTs !== b.startTs || r.startAt !== b.startTs || r.computedMin !== b.durationMin
-          || r.minutes !== b.durationMin || r.endTs !== b.lastTs || r.description !== description || r.status !== status) {
-          ops.push([updLive, [b.startTs, b.startTs, b.durationMin, b.durationMin, b.lastTs, description, status,
+          || r.minutes !== quarterHour(b.durationMin) || r.endTs !== b.lastTs || r.description !== description || r.status !== status) {
+          ops.push([updLive, [b.startTs, b.startTs, b.durationMin, quarterHour(b.durationMin), b.lastTs, description, status,
             sid, r.startTs]]);
         }
       } else {
         const m = mappingOf(b.cwd);
-        ops.push([ins, [sid, b.startTs, b.cwd, b.lastTs, b.durationMin, b.durationMin, b.startTs,
+        ops.push([ins, [sid, b.startTs, b.cwd, b.lastTs, b.durationMin, quarterHour(b.durationMin), b.startTs,
           m?.projectId ?? null, m?.taskId ?? null, m ? JSON.stringify(m.tagIds) : null, description, status]]);
       }
     }

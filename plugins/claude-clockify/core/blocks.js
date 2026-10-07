@@ -1,6 +1,8 @@
 const MIN_MS = 60000;
 /** A turn (UserPromptSubmit without its Stop yet) keeps the block open for at most this long after the prompt. */
 export const TURN_CAP_MS = 4 * 60 * MIN_MS;
+/** Hours are booked in 15-minute steps: nearest quarter, at least one. */
+export const quarterHour = (min) => Math.max(15, Math.round(min / 15) * 15);
 const CLOSING = new Set(['SessionEnd', 'ManualClose']);
 const WORK = new Set(['UserPromptSubmit', 'Stop']);
 

@@ -43,7 +43,7 @@ test('(a) open block -> in_progress; after threshold -> proposed with unchanged 
   reconcile(db, T0 + 6 * MIN, OPTS);
   let [e] = listEntries(db);
   assert.equal(e.status, 'in_progress');
-  assert.equal(e.minutes, 7);
+  assert.equal(e.minutes, 15);
   assert.equal(e.computedMin, 7);
   assert.equal(e.startAt, T0);
   assert.equal(e.endTs, T0 + 5 * MIN);
@@ -52,7 +52,7 @@ test('(a) open block -> in_progress; after threshold -> proposed with unchanged 
   assert.equal(all.length, 1);
   e = all[0];
   assert.equal(e.status, 'proposed');
-  assert.equal(e.minutes, 7);
+  assert.equal(e.minutes, 15);
 });
 
 test('(b) updateEntry on proposed -> edited; later reconcile keeps minutes; late events form a new entry', () => {
@@ -251,7 +251,7 @@ test('proposed whose block reopens goes back to in_progress with updated minutes
   const all = listEntries(db);
   assert.equal(all.length, 1);
   assert.equal(all[0].status, 'in_progress');
-  assert.equal(all[0].minutes, 16);
+  assert.equal(all[0].minutes, 15);
   assert.equal(all[0].computedMin, 16);
 });
 
