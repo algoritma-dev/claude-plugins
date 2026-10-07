@@ -1,51 +1,59 @@
 {
-    "name": "algoritma-marketplace",
-    "owner": {
-        "name": "Algoritma Team",
-        "email": "info@algoritma.it"
+  "name": "algoritma-marketplace",
+  "owner": {
+    "name": "Algoritma Team",
+    "email": "info@algoritma.it"
+  },
+  "plugins": [
+    {
+      "name": "gitlab-code-reviewer",
+      "source": "./plugins/gitlab-code-review",
+      "description": "AI-powered code review and suggestions",
+      "category": "development",
+      "homepage": "https://github.com/algoritma-dev/claude-plugins/tree/main/plugins/gitlab-code-review",
+      "author": {
+        "name": "Algoritma Team"
+      }
     },
-    "plugins": [
-        {
-            "name": "gitlab-code-reviewer",
-            "source": "./plugins/gitlab-code-review",
-            "description": "AI-powered code review and suggestions",
-            "category": "development",
-            "homepage": "https://github.com/algoritma-dev/claude-plugins/tree/main/plugins/gitlab-code-review",
-            "author": {
-                "name": "Algoritma Team"
-            }
-        },
-        {
-            "name": "claude-clockify",
-            "source": "./plugins/claude-clockify",
-            "description": "Tracks Claude Code work time and sends it to Clockify from a local dashboard",
-            "category": "productivity",
-            "homepage": "https://github.com/algoritma-dev/claude-plugins/tree/main/plugins/claude-clockify",
-            "author": {
-                "name": "Algoritma Team"
-            }
-        },
-        {
-            "name": "superpowers",
-            "source": {
-                "source": "url",
-                "url": "https://github.com/obra/superpowers.git"
-            }
-        },
-        {
-            "name": "caveman",
-            "source": {
-                "source": "url",
-                "url": "https://github.com/JuliusBrussee/caveman.git"
-            }
-        },
-        {
-            "name": "claude-mem",
-            "source": {
-                "source": "git-subdir",
-                "url": "https://github.com/thedotmack/claude-mem.git",
-                "path": "plugin"
-            }
-        }
-    ]
+    {
+      "name": "claude-clockify",
+      "source": "./plugins/claude-clockify",
+      "description": "Tracks Claude Code work time and sends it to Clockify from a local dashboard",
+      "category": "productivity",
+      "homepage": "https://github.com/algoritma-dev/claude-plugins/tree/main/plugins/claude-clockify",
+      "author": {
+        "name": "Algoritma Team"
+      }
+    },
+    {
+      "name": "superpowers",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/obra/superpowers.git"
+      }
+    },
+    {
+      "name": "caveman",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/JuliusBrussee/caveman.git"
+      }
+    },
+    {
+      "name": "claude-mem",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/thedotmack/claude-mem.git",
+        "path": "plugin"
+      }
+    },
+    {
+      "name": "mattpocock-skills",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/mattpocock/skills.git",
+        "path": "plugin"
+      }
+    }
+  ]
 }
