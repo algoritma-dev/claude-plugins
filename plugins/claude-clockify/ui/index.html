@@ -54,15 +54,12 @@
             </label>
             <label id="f-from-wrap" hidden>From <input type="date" id="f-from"></label>
             <label id="f-to-wrap" hidden>To <input type="date" id="f-to"></label>
-            <label>Status
-              <select id="f-status">
-                <option value="">all</option>
-                <option value="in_progress">In progress</option>
-                <option value="proposed">Proposed</option>
-                <option value="edited">Edited</option>
-                <option value="sent">Sent</option>
-              </select>
-            </label>
+            <fieldset id="f-status" class="status-filter"><legend>Status</legend>
+              <label><input type="checkbox" value="in_progress"> In progress</label>
+              <label><input type="checkbox" value="proposed"> Proposed</label>
+              <label><input type="checkbox" value="edited"> Edited</label>
+              <label><input type="checkbox" value="sent"> Sent</label>
+            </fieldset>
             <button type="button" id="send-selected" class="primary" disabled>Send selected</button>
             <button type="button" id="delete-selected" class="delete" disabled>Delete selected</button>
           </div>

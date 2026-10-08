@@ -176,6 +176,8 @@ p.msg { margin: 0 0 8px; }
 .section-head h2 { margin: 0; }
 .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .filters label { display: inline-flex; align-items: center; gap: 6px; }
+.status-filter { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; border: 0; margin: 0; padding: 0; }
+.status-filter legend { float: left; padding: 0 8px 0 0; }
 
 .table-wrap { overflow-x: auto; max-width: 100%; }
 

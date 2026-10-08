@@ -1,7 +1,7 @@
 {
   "name": "claude-clockify",
   "description": "Automatically records the work time of Claude Code sessions and sends it to Clockify from a local dashboard",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": {
     "name": "Raffaele Carelle"
   }

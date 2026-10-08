@@ -149,7 +149,7 @@
     mappings: [],
     settings: null,
     selected: new Set(),
-    filters: { period: '7d', from: '', to: '', status: '' },
+    filters: { period: '7d', from: '', to: '', status: [] },
   };
   const rowCtl = new Map(); // key -> row controller
   const dayRows = new Map(); // day -> {tr, th}
@@ -764,9 +764,31 @@
   }
 
   // ---------- filters & table ----------
+  const FILTERS_KEY = 'clockify-dash.filters';
+  const STATUS_RANK = { in_progress: 0, proposed: 1, edited: 2 };
+  const statusRank = (e) => STATUS_RANK[e.status] ?? 3;
+  function loadFilters() {
+    try {
+      const f = JSON.parse(localStorage.getItem(FILTERS_KEY));
+      if (['today', '7d', 'all', 'range'].includes(f.period)) state.filters.period = f.period;
+      for (const k of ['from', 'to']) if (typeof f[k] === 'string') state.filters[k] = f[k];
+      if (Array.isArray(f.status)) state.filters.status = f.status.filter((x) => x in STATUS_LABEL);
+    } catch { /* no saved filters */ }
+  }
+  function saveFilters() {
+    try { localStorage.setItem(FILTERS_KEY, JSON.stringify(state.filters)); } catch { /* storage unavailable */ }
+  }
+  function syncFilterControls() {
+    const f = state.filters;
+    $('f-period').value = f.period;
+    $('f-from').value = f.from;
+    $('f-to').value = f.to;
+    $('f-from-wrap').hidden = $('f-to-wrap').hidden = f.period !== 'range';
+    for (const cb of $('f-status').querySelectorAll('input')) cb.checked = f.status.includes(cb.value);
+  }
   function inFilter(e) {
     const f = state.filters;
-    if (f.status && e.status !== f.status) return false;
+    if (f.status.length && !f.status.includes(e.status)) return false;
     const now = new Date();
     if (f.period === 'today') return e.day === localDay(now.getTime());
     if (f.period === '7d') {
@@ -796,7 +818,7 @@
     const keepRows = new Set();
     const keepDays = new Set();
     for (const day of days) {
-      const list = byDay.get(day).sort((a, b) => a.startAt - b.startAt || a.startTs - b.startTs);
+      const list = byDay.get(day).sort((a, b) => statusRank(a) - statusRank(b) || a.startAt - b.startAt || a.startTs - b.startTs);
       let dr = dayRows.get(day);
       if (!dr) {
         const th = h('th', { colspan: '9', scope: 'colgroup' });
@@ -1352,17 +1374,24 @@
         }
       });
     }
+    loadFilters();
+    syncFilterControls();
     const period = $('f-period');
     period.addEventListener('change', () => {
       state.filters.period = period.value;
       const range = period.value === 'range';
       $('f-from-wrap').hidden = !range;
       $('f-to-wrap').hidden = !range;
+      saveFilters();
       renderTable();
     });
-    $('f-from').addEventListener('change', () => { state.filters.from = $('f-from').value; renderTable(); });
-    $('f-to').addEventListener('change', () => { state.filters.to = $('f-to').value; renderTable(); });
-    $('f-status').addEventListener('change', () => { state.filters.status = $('f-status').value; renderTable(); });
+    $('f-from').addEventListener('change', () => { state.filters.from = $('f-from').value; saveFilters(); renderTable(); });
+    $('f-to').addEventListener('change', () => { state.filters.to = $('f-to').value; saveFilters(); renderTable(); });
+    $('f-status').addEventListener('change', () => {
+      state.filters.status = [...$('f-status').querySelectorAll('input:checked')].map((cb) => cb.value);
+      saveFilters();
+      renderTable();
+    });
     $('send-selected').addEventListener('click', openSendDialog);
     $('delete-selected').addEventListener('click', deleteSelected);
     $('select-all').addEventListener('change', toggleSelectAll);
