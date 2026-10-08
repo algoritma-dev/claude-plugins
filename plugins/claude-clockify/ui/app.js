@@ -50,11 +50,17 @@
     if (hh > 23 || mm > 59) return null;
     return { h: hh, m: mm, text: `${pad(hh)}:${pad(mm)}` };
   };
-  const hoursInput = (min) => (Number(min) / 60).toFixed(2);
-  const fmtHours = (min) => `${(Number(min) / 60).toFixed(2)} h`;
-  /** Decimal hours typed by the user: accepts both "1.5" and "1,5". NaN when not a plain number. */
+  const fmtHM = (min) => {
+    const t = Math.round(Number(min));
+    return `${Math.floor(t / 60)}:${pad(t % 60)}`;
+  };
+  const hoursInput = fmtHM;
+  const fmtHours = (min) => `${fmtHM(min)} h`;
+  /** Hours typed by the user as "1:30" or decimal ("1.5", "1,5"). NaN when invalid. */
   const parseHours = (text) => {
     const t = String(text).trim().replace(',', '.');
+    const hm = /^(\d+):([0-5]\d)$/.exec(t);
+    if (hm) return Number(hm[1]) + Number(hm[2]) / 60;
     return /^\d*\.?\d+$|^\d+\.$/.test(t) ? Number(t) : NaN;
   };
   function fmtDay(day) {
@@ -548,7 +554,7 @@
     hours.addEventListener('change', () => {
       const v = parseHours(hours.value);
       if (!Number.isFinite(v) || v <= 0 || v > 24) {
-        setMsg(ctl.msg, 'error', 'Invalid hours: enter a number between 0.01 and 24.');
+        setMsg(ctl.msg, 'error', 'Invalid hours: enter h:mm (e.g. 1:30) or decimal hours, up to 24.');
         return;
       }
       queuePatch(ctl, { minutes: Math.max(15, Math.round(v * 4) * 15) }, true);
