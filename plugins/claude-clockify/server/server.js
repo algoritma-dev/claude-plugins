@@ -8,7 +8,7 @@ import { openDb } from '../core/db.js';
 import {
   reconcile, listEntries, updateEntry, dismissEntry, closeNow, recordSent, setMapping, deleteMapping, listMappings,
 } from '../core/entries.js';
-import { quarterHour } from '../core/blocks.js';
+import { quarterHour, quarterStart } from '../core/blocks.js';
 import { importTranscripts } from '../core/transcripts.js';
 import { createClient, ClockifyError, toClockifyEntry } from '../clockify/client.js';
 import { checkRequest } from './security.js';
@@ -133,6 +133,7 @@ function validatePatch(patch) {
         break;
       case 'startAt':
         if (!Number.isSafeInteger(v) || v < 0) throw bad('startAt must be a timestamp in ms');
+        patch.startAt = quarterStart(v);
         break;
       case 'projectId':
       case 'taskId':

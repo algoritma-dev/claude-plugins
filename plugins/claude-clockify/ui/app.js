@@ -538,9 +538,9 @@
         setMsg(ctl.msg, 'error', 'Invalid time: use 24h HH:MM.');
         return;
       }
-      time.value = t.text;
       const d = new Date(eff('startAt'));
-      d.setHours(t.h, t.m, 0, 0);
+      d.setHours(t.h, Math.floor(t.m / 15) * 15, 0, 0);
+      time.value = fmtTime(d.getTime());
       queuePatch(ctl, { startAt: d.getTime() }, true);
     };
     time.addEventListener('change', () => commitTime(time.value));

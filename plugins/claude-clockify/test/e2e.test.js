@@ -107,7 +107,7 @@ test('e2e: hook -> proposed -> edited -> sent -> new in_progress entry', async (
   assert.equal(body.taskId, 't1');
   assert.deepEqual(body.tagIds, ['g1']);
   assert.equal(new Date(body.end).getTime() - new Date(body.start).getTime(), 90 * MIN);
-  assert.equal(new Date(body.start).getTime(), e1.startTs);
+  assert.equal(new Date(body.start).getTime(), e1.startTs - (e1.startTs % (15 * MIN)));
   assert.match(body.start, /Z$/);
   assert.match(body.end, /Z$/);
   const sentEntry = listEntries(db).find((e) => e.startTs === e1.startTs);

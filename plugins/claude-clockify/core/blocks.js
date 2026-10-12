@@ -3,6 +3,8 @@ const MIN_MS = 60000;
 export const TURN_CAP_MS = 4 * 60 * MIN_MS;
 /** Hours are booked in 15-minute steps: nearest quarter, at least one. */
 export const quarterHour = (min) => Math.max(15, Math.round(min / 15) * 15);
+/** Start times snap down to the quarter hour. */
+export const quarterStart = (ts) => ts - (ts % 900000);
 const CLOSING = new Set(['SessionEnd', 'ManualClose']);
 const WORK = new Set(['UserPromptSubmit', 'Stop']);
 
